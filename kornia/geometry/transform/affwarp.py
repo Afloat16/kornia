@@ -947,6 +947,8 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
+        - The affine parameters share one batch size. A parameter batch of one is reused for every input image;
+          an explicit ``center`` uses the same parameter batch size.
         - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
           of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
         - Known defect: :func:`shear` and :class:`Shear` read their ``shear`` as raw factors about pixel ``(0, 0)``,
@@ -1058,8 +1060,7 @@ class Affine(nn.Module):
         else:
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
-        batch = input.shape[0] if input.dim() == 4 else 1
-        center = _compute_tensor_center(input).expand(batch, -1) if self.center is None else self.center
+        center = _compute_tensor_center(input).expand(self.angle.shape[0], -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
