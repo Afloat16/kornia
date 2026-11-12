@@ -44,7 +44,9 @@ class LayerNorm2d(nn.LayerNorm):
         out = x - torch.mean(x, dim=1, keepdim=True)
         out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
         if self.elementwise_affine:
-            out = out * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)
+            out = out * self.weight.view(1, -1, 1, 1)
+            if self.bias is not None:
+                out = out + self.bias.view(1, -1, 1, 1)
         return out
 
 

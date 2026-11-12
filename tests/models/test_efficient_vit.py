@@ -23,6 +23,41 @@ import torch
 
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
+from kornia.models.efficient_vit.nn.norm import build_norm
+
+from testing.base import BaseTester
+
+
+class TestEfficientViTLayerNorm2d(BaseTester):
+    @pytest.mark.parametrize("bias", [True, False])
+    @pytest.mark.parametrize("elementwise_affine", [True, False])
+    def test_channel_normalization(self, device, dtype, bias, elementwise_affine):
+        layer = build_norm("ln2d", 4, bias=bias, elementwise_affine=elementwise_affine).to(device, dtype)
+        reference = torch.nn.LayerNorm(4, bias=bias, elementwise_affine=elementwise_affine).to(device, dtype)
+        if elementwise_affine:
+            with torch.no_grad():
+                layer.weight.copy_(torch.tensor([0.5, 1.0, 1.5, 2.0], device=device, dtype=dtype))
+            reference.load_state_dict(layer.state_dict())
+        image = torch.rand(2, 4, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        expected_input = image.detach().clone().requires_grad_(True)
+        output = layer(image)
+        expected = reference(expected_input.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        self.assert_close(output, expected)
+        grad_output = torch.randn_like(output)
+        actual_grads = torch.autograd.grad(output, (image, *layer.parameters()), grad_output)
+        expected_grads = torch.autograd.grad(expected, (expected_input, *reference.parameters()), grad_output)
+        for actual, target in zip(actual_grads, expected_grads):
+            self.assert_close(actual, target)
+
+    def test_gradcheck(self, device):
+        layer = build_norm("ln2d", 4, bias=False).to(device, torch.float64)
+        image = torch.rand(1, 4, 2, 3, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(layer, (image,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        layer = build_norm("ln2d", 4, bias=False).to(device, dtype)
+        image = torch.rand(2, 4, 3, 5, device=device, dtype=dtype)
+        self.assert_close(torch_optimizer(layer)(image), layer(image))
 
 
 class _NotAWeight:
