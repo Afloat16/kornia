@@ -41,7 +41,8 @@ class DepthEstimation(HFONNXComunnityModel):
         The image is cast to float32, moved to the CPU and resized there by the ``resize`` stage, if the model has
         one. ONNX Runtime runs the graphs on a NumPy array of it. The depth map is resized back to the image size on
         the CPU in float32 with a bicubic interpolation, as transformers' ``post_process_depth_estimation`` does, then
-        cast to the dtype of the image and moved to its device.
+        cast to the dtype of the image and moved to its device. Inputs are detached for ONNX inference; returned
+        depth maps do not carry gradients back to the images.
 
         Args:
             images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
@@ -65,7 +66,7 @@ class DepthEstimation(HFONNXComunnityModel):
         # float32 is the dtype the graph takes, and the resizes run in it as well, so that the depth does not depend on
         # the input dtype. They run on the CPU, where ONNX Runtime reads its input: torch 2.5.1 has no bicubic kernel
         # on MPS, and the depth does not depend on the device either.
-        inputs = images.float().cpu()
+        inputs = images.detach().float().cpu()
         if self.resize is not None:
             inputs = self.resize(inputs)
         depth = torch.from_numpy(super().__call__(inputs.numpy())[0])

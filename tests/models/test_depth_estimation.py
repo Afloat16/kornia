@@ -262,6 +262,20 @@ class TestDepthEstimation(BaseTester):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
 
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_inference_accepts_images_that_require_grad(self, device, dtype, as_list):
+        self._skip_float64_on_mps(device, dtype)
+        model = DepthEstimation(_stand_in_graph(), pre_processor=None)
+        images = torch.rand(2, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+
+        depths = model(list(images) if as_list else images)
+
+        actual = torch.stack(depths) if as_list else depths
+        self.assert_close(actual, images.detach().float().mean(1, keepdim=True).to(dtype))
+        assert not actual.requires_grad
+        assert images.requires_grad
+        assert images.grad is None
+
     def test_tensor_batch_returns_b1hw(self, device, dtype):
         self._skip_float64_on_mps(device, dtype)
         model = DepthEstimation(_stand_in_graph(), pre_processor=None)

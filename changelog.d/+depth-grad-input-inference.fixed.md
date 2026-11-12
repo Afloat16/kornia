@@ -1,0 +1,1 @@
+`DepthEstimation` accepts images that require gradients by detaching them at the ONNX inference boundary, instead of failing during the conversion to NumPy. The caller's tensors retain their autograd state.
