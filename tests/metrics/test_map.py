@@ -25,6 +25,40 @@ from testing.base import BaseTester
 
 
 class TestMeanAveragePrecision(BaseTester):
+    def test_image_membership_work_is_bounded_by_images(self, device, dtype):
+        num_images, objects_per_image = 4, 20
+        total_objects = num_images * objects_per_image
+
+        class MembershipWork(torch.utils._python_dispatch.TorchDispatchMode):
+            elements = 0
+
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                if (
+                    func in (torch.ops.aten.eq.Scalar, torch.ops.aten.eq.Tensor)
+                    and args[0].dtype == torch.long
+                    and args[0].shape == (total_objects,)
+                ):
+                    self.elements += total_objects
+                return func(*args, **(kwargs or {}))
+
+        x = torch.arange(objects_per_image, device=device, dtype=dtype) * 10
+        boxes = torch.stack((x, torch.zeros_like(x), x + 5, torch.full_like(x, 5)), -1)
+        labels = torch.ones(objects_per_image, device=device, dtype=torch.long)
+        scores = torch.cat((torch.full_like(x, 0.9), torch.full_like(x, 0.1)))
+        work = MembershipWork()
+        with work:
+            mean_ap, aps = kornia.metrics.mean_average_precision(
+                [boxes.repeat(2, 1)] * num_images,
+                [labels.repeat(2)] * num_images,
+                [scores] * num_images,
+                [boxes] * num_images,
+                [labels] * num_images,
+                2,
+            )
+        self.assert_close(mean_ap, torch.ones((), device=device, dtype=dtype))
+        self.assert_close(aps[1], 1.0)
+        assert work.elements <= total_objects * (num_images + 2)
+
     @pytest.mark.parametrize("coordinates", [[[100, 50, 150, 100.0]], [[0, 0, 512, 512]]])
     def test_smoke(self, coordinates, device, dtype):
         boxes = torch.tensor(coordinates, device=device, dtype=dtype)

@@ -169,12 +169,15 @@ def mean_average_precision(
         # In the order of decreasing scores, check if true or false positive
         gt_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
         false_positives = torch.zeros((n_class_detections,), dtype=ap_dtype, device=pred_class_boxes.device)
-        for d in range(n_class_detections):
+        objects_by_image: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+        for d, this_image in enumerate(pred_class_images.tolist()):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
-            this_image = pred_class_images[d]  # (), scalar
 
             # Find objects in the image with this class, their difficulties, and whether they have been detected before
-            object_boxes = gt_class_boxes[gt_class_images == this_image]  # (n_class_objects_in_img)
+            if this_image not in objects_by_image:
+                object_indices = torch.where(gt_class_images == this_image)[0]
+                objects_by_image[this_image] = (gt_class_boxes[object_indices], object_indices)
+            object_boxes, object_indices = objects_by_image[this_image]
             # If no such object in this image, then the detection is a false positive
             if object_boxes.size(0) == 0:
                 false_positives[d] = 1
@@ -186,9 +189,7 @@ def mean_average_precision(
 
             # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
             # In the original class-level tensors 'gt_class_boxes', etc., 'ind' corresponds to object with index...
-            original_ind = torch.tensor(
-                range(gt_class_boxes.size(0)), device=gt_class_boxes_detected.device, dtype=torch.long
-            )[gt_class_images == this_image][ind]
+            original_ind = object_indices[ind]
             # We need 'original_ind' to update 'gt_class_boxes_detected'
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match
