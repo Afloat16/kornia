@@ -1,0 +1,1 @@
+`load_pointcloud_ply_binary` reads mixed-property point clouds with float32 or float64 coordinates in bulk, reducing Python allocation and load time for colored PLY files while preserving coordinate order and endianness.

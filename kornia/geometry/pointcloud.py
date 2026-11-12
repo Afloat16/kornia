@@ -489,6 +489,24 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
             # Advanced indexing already copies out of the buffer, so the result never aliases ``values``.
             return table[:, list(xyz)].to(torch.float32)
 
-    # Mixed layout (or an unsigned type torch cannot hold): unpack row by row.
+    coordinate_types = [vertex.properties[index][1] for index in xyz]
+    first_type = coordinate_types[0]
+    if first_type is not None:
+        code, dtype = _PLY_SCALAR_TYPES[first_type]
+        if dtype in (torch.float32, torch.float64) and all(
+            scalar_type is not None and _PLY_SCALAR_TYPES[scalar_type][0] == code for scalar_type in coordinate_types
+        ):
+            # Colored PLY files mix float coordinates with byte colors, often leaving the next row unaligned.
+            # Gather just the coordinate bytes in one pass instead of constructing a Python float for every cell.
+            widths = [struct.calcsize(scalar_code) for scalar_code in vertex_format[1:]]
+            byte_order = list(range(struct.calcsize(code)))
+            if (endian == "<") != (sys.byteorder == "little"):
+                byte_order.reverse()
+            columns = [sum(widths[:index]) + byte for index in xyz for byte in byte_order]
+            table_bytes = torch.frombuffer(bytearray(data), dtype=torch.uint8).reshape(vertex.count, stride)
+            selected = table_bytes.index_select(1, torch.tensor(columns, device="cpu"))
+            return selected.view(dtype).to(torch.float32)
+
+    # Different coordinate types (or an unsigned type torch cannot hold): unpack row by row.
     rows = struct.iter_unpack(vertex_format, data)
     return torch.tensor([[row[i] for i in xyz] for row in rows], dtype=torch.float32)
