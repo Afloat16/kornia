@@ -1,0 +1,1 @@
+Reuse YuNet prior boxes within each FaceDetector batch instead of regenerating the same anchors for every image, reducing batched postprocessing work while preserving empty batches and detection coordinates.
