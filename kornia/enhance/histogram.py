@@ -22,6 +22,7 @@ import torch
 
 from kornia.core.check import _check_async
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _needs_derivatives, is_compiling
 
 
 def marginal_pdf(
@@ -247,6 +248,42 @@ def _validate_histogram_bandwidth(
     return bandwidth
 
 
+def _image_histogram_counts(image: torch.Tensor, centers: torch.Tensor, bandwidth: float, kernel: str) -> torch.Tensor:
+    """Sum the unchanged kernel weights over each image's pixels for the supplied bins."""
+    u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
+
+    if kernel == "gaussian":
+        kernel_values = torch.exp(-0.5 * u**2)
+    elif kernel in ("triangular", "uniform", "epanechnikov"):
+        # compute the mask and cast to floating point
+        mask = (u <= 1).to(u.dtype)
+        if kernel == "triangular":
+            kernel_values = (1.0 - u) * mask
+        elif kernel == "uniform":
+            kernel_values = mask
+        else:  # kernel == "epanechnikov"
+            kernel_values = (1.0 - u**2) * mask
+    else:
+        raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
+
+    return torch.sum(kernel_values, dim=(-2, -1))
+
+
+@torch.jit.unused
+def _image_histogram_cpu_chunk_size(image: torch.Tensor, centers: torch.Tensor) -> int:
+    """Keep large eager CPU inference temporaries bounded without changing derivative or captured paths."""
+    if (
+        image.device.type == "cpu"
+        and not is_compiling()
+        and not torch.jit.is_tracing()
+        and image.numel() * centers.numel() > 1 << 22
+        and not _needs_derivatives(image)
+        and not _needs_derivatives(centers)
+    ):
+        return max(1, (1 << 20) // image.numel())
+    return 0
+
+
 def image_histogram2d(
     image: torch.Tensor,
     min: float = 0.0,
@@ -351,23 +388,20 @@ def image_histogram2d(
         centers = min + bin_width * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
     centers = centers.to(compute_dtype).reshape(-1, 1, 1, 1, 1)
 
-    u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers) / bandwidth
-
-    if kernel == "gaussian":
-        kernel_values = torch.exp(-0.5 * u**2)
-    elif kernel in ("triangular", "uniform", "epanechnikov"):
-        # compute the mask and cast to floating point
-        mask = (u <= 1).to(u.dtype)
-        if kernel == "triangular":
-            kernel_values = (1.0 - u) * mask
-        elif kernel == "uniform":
-            kernel_values = mask
-        else:  # kernel == "epanechnikov"
-            kernel_values = (1.0 - u**2) * mask
+    image_work = image.to(compute_dtype)
+    chunk_size = 0
+    if not torch.jit.is_scripting():
+        chunk_size = _image_histogram_cpu_chunk_size(image_work, centers)
+    if chunk_size:
+        # Split only bins: every bin retains its original pixel reduction and arithmetic. About 1M weights per
+        # chunk avoids materializing all bins at once; the minimum of one bin also handles larger images.
+        hist = torch.cat(
+            [_image_histogram_counts(image_work, chunk, bandwidth, kernel) for chunk in centers.split(chunk_size)],
+            dim=0,
+        )
     else:
-        raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
-
-    hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
+        hist = _image_histogram_counts(image_work, centers, bandwidth, kernel)
+    hist = hist.permute(1, 2, 0)
     hist = _restore_float_dtype(hist, image, auto_centers)
 
     if return_pdf:
