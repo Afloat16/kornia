@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.filters import filter3d, get_gaussian_kernel3d
+from kornia.filters import filter3d, get_gaussian_kernel1d, get_gaussian_kernel3d
 from kornia.filters.filter import _VALID_PADDING, _compute_padding
 
 
@@ -39,6 +39,16 @@ def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
             -cropping_shape[1],
         ),
     )
+
+
+def _filter_ssim3d(img: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    """Apply the CPU window as three one-dimensional filters, or the dense window used by other devices."""
+    if kernel.ndim == 2:
+        length = kernel.shape[-1]
+        img = filter3d(img, kernel.reshape(1, 1, 1, length), border_type="reflect")
+        img = filter3d(img, kernel.reshape(1, 1, length, 1), border_type="reflect")
+        return filter3d(img, kernel.reshape(1, length, 1, 1), border_type="reflect")
+    return filter3d(img, kernel, border_type="reflect")
 
 
 def ssim3d(
@@ -79,6 +89,9 @@ def ssim3d(
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
+        On CPU, windows of at least 5 voxels over contiguous volumes of at least 2048 voxels per channel use
+        separable filtering.
+        The separable evaluation may differ from dense filtering by floating-point roundoff.
         On CUDA the float32 filtering follows ``torch.backends.cudnn.allow_tf32``, which PyTorch enables by default.
         cuDNN can then filter a single-channel volume with a TF32 kernel, which rounds the inputs of the local
         moments to 10 mantissa bits. The variances are differences of those moments, so in flat regions the map can
@@ -128,10 +141,21 @@ def ssim3d(
     compute_dtype = torch.promote_types(img1.dtype, img2.dtype)
     img1, img2 = img1.to(compute_dtype), img2.to(compute_dtype)
 
-    # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel3d(
-        (window_size, window_size, window_size), (1.5, 1.5, 1.5), device=img1.device, dtype=compute_dtype
-    )
+    # Large CPU windows are separable; retain one dense convolution for small
+    # volumes/windows where the extra launches outweigh the arithmetic saved.
+    volume_size = img1.shape[-3] * img1.shape[-2] * img1.shape[-1]
+    if (
+        img1.device.type == "cpu"
+        and window_size >= 5
+        and volume_size >= 2048
+        and img1.is_contiguous()
+        and img2.is_contiguous()
+    ):
+        kernel = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=compute_dtype)
+    else:
+        kernel = get_gaussian_kernel3d(
+            (window_size, window_size, window_size), (1.5, 1.5, 1.5), device=img1.device, dtype=compute_dtype
+        )
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
@@ -139,13 +163,12 @@ def ssim3d(
 
     # compute local mean per channel
     with torch.autocast(device_type=img1.device.type, enabled=False):
-        mu1: torch.Tensor = filter3d(img1, kernel, border_type="reflect")
-        mu2: torch.Tensor = filter3d(img2, kernel, border_type="reflect")
+        mu1: torch.Tensor = _filter_ssim3d(img1, kernel)
+        mu2: torch.Tensor = _filter_ssim3d(img2, kernel)
 
     cropping_shape: List[int] = []
     if padding == "valid":
-        depth, height, width = kernel.shape[-3:]
-        cropping_shape = _compute_padding([depth, height, width])
+        cropping_shape = _compute_padding([window_size, window_size, window_size])
         mu1 = _crop(mu1, cropping_shape)
         mu2 = _crop(mu2, cropping_shape)
     elif padding == "same":
@@ -156,9 +179,9 @@ def ssim3d(
     mu1_mu2 = mu1 * mu2
 
     with torch.autocast(device_type=img1.device.type, enabled=False):
-        mu_img1_sq = filter3d(img1**2, kernel, border_type="reflect")
-        mu_img2_sq = filter3d(img2**2, kernel, border_type="reflect")
-        mu_img1_img2 = filter3d(img1 * img2, kernel, border_type="reflect")
+        mu_img1_sq = _filter_ssim3d(img1**2, kernel)
+        mu_img2_sq = _filter_ssim3d(img2**2, kernel)
+        mu_img1_img2 = _filter_ssim3d(img1 * img2, kernel)
 
     if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)

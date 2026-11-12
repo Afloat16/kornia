@@ -301,6 +301,56 @@ class TestSSIM3d(BaseTester):
 
         self.assert_close(ops_out, mod_out)
 
+    @pytest.mark.parametrize("window_size", [5, 11])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    def test_large_volume_dense_reference_and_gradients(self, device, dtype, window_size, padding, noncontiguous):
+        if device.type == "mps":
+            pytest.skip("Float64 reference is unsupported on MPS")
+        # Both layouts exercise every axis and keep the separate channel moments.
+        x = torch.rand(1, 2, 12, 16, 16, device=device, dtype=dtype)
+        if noncontiguous:
+            x = x.transpose(-1, -2)
+        x.requires_grad_()
+        y = torch.rand_like(x).requires_grad_()
+        rx, ry = x.detach().double().requires_grad_(), y.detach().double().requires_grad_()
+        kernel = kornia.filters.get_gaussian_kernel3d(
+            (window_size,) * 3, (1.5,) * 3, device=device, dtype=torch.float64
+        )
+
+        def blur(value):
+            result = kornia.filters.filter3d(value, kernel, border_type="reflect")
+            if padding == "valid":
+                p = window_size // 2
+                result = result[..., p:-p, p:-p, p:-p]
+            return result
+
+        mx, my = blur(rx), blur(ry)
+        vx, vy, covariance = blur(rx * rx) - mx * mx, blur(ry * ry) - my * my, blur(rx * ry) - mx * my
+        c1, c2 = 0.01**2, 0.03**2
+        expected = (2 * mx * my + c1) * (2 * covariance + c2) / ((mx * mx + my * my + c1) * (vx + vy + c2) + 1e-12)
+        actual = kornia.metrics.ssim3d(x, y, window_size, padding=padding)
+        assert actual.dtype == dtype
+        if dtype == torch.float32 and window_size == 11:
+            # The existing dense float32 sum over 11**3 weights differs from
+            # the double oracle by about 2e-5, including on the fallback path.
+            self.assert_close(actual, expected.to(dtype), rtol=1e-4, atol=3e-5)
+        else:
+            self.assert_close(actual, expected.to(dtype))
+        grads = torch.autograd.grad(actual.mean(), (x, y))
+        reference_grads = torch.autograd.grad(expected.mean(), (rx, ry))
+        for grad, reference_grad in zip(grads, reference_grads):
+            assert torch.isfinite(grad).all()
+            self.assert_close(grad, reference_grad.to(dtype), rtol=2e-2, atol=1e-5)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_dynamo_large_volume(self, device, dtype, torch_optimizer, padding):
+        x = torch.rand(1, 2, 8, 16, 16, device=device, dtype=dtype)
+        y = torch.rand_like(x)
+        expected = kornia.metrics.ssim3d(x, y, 5, padding=padding)
+        optimized = torch_optimizer(kornia.metrics.ssim3d)
+        self.assert_close(optimized(x, y, 5, padding=padding), expected)
+
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=torch.float64)
 
