@@ -177,18 +177,11 @@ def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: tor
         f.writelines(s.encode("utf-8") for s in header)
 
         if num_points > 0:
-            # Move to CPU, convert to float64 for matching 'double' in header
-            arr = xyz.detach().cpu().to(torch.float64).reshape(-1)
-
-            # Convert to array.array for efficient byte-level handling
-            data_array = array.array("d", arr.tolist())
-
-            # Ensure little-endian
-            if sys.byteorder == "big":
-                data_array.byteswap()
-
-            # Write binary data in a single operation for I/O efficiency
-            f.write(data_array.tobytes())
+            # Write a contiguous float64 buffer without building a Python float list.
+            # Resolve lazy negative views and retain the format's little-endian order.
+            arr = xyz.detach().cpu().to(torch.float64).reshape(-1).contiguous()
+            data = arr.numpy(force=True).astype("<f8", copy=False)
+            f.write(memoryview(data))
 
 
 class _PlyElement(NamedTuple):
