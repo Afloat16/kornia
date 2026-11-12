@@ -147,7 +147,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         - :class:`MedianBlur`: the module form.
         - :func:`box_blur`: takes the mean of the window.
         - :func:`bilateral_blur`: averages instead of selecting, with weights that keep an edge.
-        - :func:`get_binary_kernel2d`: the kernel that stacks each window for the median.
+        - :func:`get_binary_kernel2d`: the kernel used by the convolution fallback to stack each window.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -173,7 +173,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
     # ATen's per-pixel median reduction dominates inference for small windows.
     # A fixed selection network avoids it. Inductor fuses the network into one
     # CUDA kernel; eager CUDA launches one kernel per comparator, which only pays
-    # off for 3x3 windows on large inputs. Keep the original path for autograd
+    # off for 3x3 windows on large inputs. Keep the median reduction for autograd
     # (in particular its tie indices) and other devices/sizes.
     on_cuda = input.device.type == "cuda" and (is_compiling() or (ky == 3 and input.numel() >= 1 << 20))
     if (
@@ -190,7 +190,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
 
     padding = _compute_zero_padding(kernel_size)
 
-    # Convolve finite values only and mark the windows that held a NaN or an infinity afterwards, so the result
+    # Extract finite values only and mark the windows that held a NaN or an infinity afterwards, so the result
     # does not depend on how the backend's convolution treats 0 * NaN and 0 * Inf. A 1x1 window has no zero
     # weight and returns its pixel, infinity included. An empty input has nothing to mark.
     invalid: torch.Tensor | None = None
@@ -198,21 +198,35 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         invalid = _non_finite_windows(input, (ky, kx), border_type)
         input = input.nan_to_num(0.0, 0.0, 0.0)
 
-    # prepare kernel
-    kernel: torch.Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     b, c, h, w = input.shape
-
-    # map the local window to single vector
-    if border_type == "constant":
-        features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    # CPU im2col avoids multiplying every window by a dense one-hot kernel, especially costly for large
+    # windows and backward. It keeps the same row-major median indices. Keep convolution for autocast's
+    # output dtype, captured graphs, and devices whose extraction performance has not been measured.
+    if (
+        input.device.type == "cpu"
+        and ky * kx > 1
+        and not is_autocast_enabled()
+        and not is_compiling()
+        and not torch.jit.is_tracing()
+    ):
+        input = input + 0.0  # Match convolution's normalization of negative zero without copying every window.
+        if border_type == "constant":
+            features = F.unfold(input, (ky, kx), padding=padding)
+        else:
+            padded = _pad(input, [padding[1], padding[1], padding[0], padding[0]], border_type)
+            features = F.unfold(padded, (ky, kx))
     else:
-        padded = _pad(input, [padding[1], padding[1], padding[0], padding[0]], border_type)
-        features = F.conv2d(
-            padded.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
-            kernel,
-            padding=0,
-            stride=1,
-        )
+        kernel: torch.Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
+        if border_type == "constant":
+            features = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+        else:
+            padded = _pad(input, [padding[1], padding[1], padding[0], padding[0]], border_type)
+            features = F.conv2d(
+                padded.reshape(b * c, 1, h + 2 * padding[0], w + 2 * padding[1]),
+                kernel,
+                padding=0,
+                stride=1,
+            )
 
     features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
