@@ -259,7 +259,7 @@ class SemanticSegmentation(ModelBase):
         colormap: str = "random",
         manual_seed: int = 2147,
     ) -> None:
-        """Save the segmentation results.
+        """Save the segmentation results, with an equal-weight overlay of the image and class colors.
 
         Args:
             images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
@@ -277,7 +277,7 @@ class SemanticSegmentation(ModelBase):
         colored_masks = self.visualize(images, semantic_masks, "torch", colormap=colormap, manual_seed=manual_seed)
         overlaid: Union[torch.Tensor, list[torch.Tensor]]
         if isinstance(images, torch.Tensor) and isinstance(colored_masks, torch.Tensor):
-            overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
+            overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 0.0)
         elif isinstance(
             images,
             (
@@ -293,7 +293,7 @@ class SemanticSegmentation(ModelBase):
         ):
             overlaid = []
             for i in range(len(images)):
-                overlaid.append(kornia.enhance.add_weighted(images[i][None], 0.5, colored_masks[i][None], 0.5, 1.0)[0])
+                overlaid.append(kornia.enhance.add_weighted(images[i][None], 0.5, colored_masks[i][None], 0.5, 0.0)[0])
         else:
             raise ValueError(f"`images` should be a torch.Tensor or a list of Tensors. Got {type(images)}")
 

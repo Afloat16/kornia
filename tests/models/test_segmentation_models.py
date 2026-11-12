@@ -21,6 +21,7 @@ import pytest
 import torch
 from torch import nn
 
+from kornia.io import ImageLoadType, load_image
 from kornia.models.segmentation import SegmentationModelsBuilder, SemanticSegmentation
 
 from testing.base import BaseTester
@@ -162,6 +163,24 @@ class TestSegmentationModelsBuilder(BaseTester):
 
 
 class TestSemanticSegmentation(BaseTester):
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_saved_overlay_keeps_image_and_class_colors(self, as_list, tmp_path):
+        model = SegmentationModelsBuilder.build(_stand_in_network(2))
+        images = torch.linspace(0.0, 1.0, 3 * 4 * 6).reshape(1, 3, 4, 6)
+        masks = torch.zeros(1, 2, 4, 6)
+        masks[:, 0, :, :3] = 1.0
+        masks[:, 1, :, 3:] = 1.0
+        colored_masks = model.visualize(images, masks, manual_seed=7)
+        expected = ((images[0] + colored_masks[0]) * 0.5 * 255.0).round().to(torch.uint8)
+        model.save(
+            list(images) if as_list else images,
+            list(masks) if as_list else masks,
+            directory=str(tmp_path),
+            manual_seed=7,
+        )
+        (overlay,) = tmp_path.glob("*_overlay_*.png")
+        self.assert_close(load_image(overlay, ImageLoadType.UNCHANGED), expected, rtol=0, atol=0)
+
     def test_from_config_not_implemented(self):
         with pytest.raises(NotImplementedError, match=r"SegmentationModelsBuilder\.build"):
             SemanticSegmentation.from_config(None)
