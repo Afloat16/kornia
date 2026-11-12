@@ -174,7 +174,8 @@ def mean_average_precision(
             this_image = pred_class_images[d]  # (), scalar
 
             # Find objects in the image with this class, their difficulties, and whether they have been detected before
-            object_boxes = gt_class_boxes[gt_class_images == this_image]  # (n_class_objects_in_img)
+            object_indices = torch.where(gt_class_images == this_image)[0]
+            object_boxes = gt_class_boxes[object_indices]  # (n_class_objects_in_img)
             # If no such object in this image, then the detection is a false positive
             if object_boxes.size(0) == 0:
                 false_positives[d] = 1
@@ -186,9 +187,7 @@ def mean_average_precision(
 
             # 'ind' is the index of the object in these image-level tensors 'object_boxes', 'object_difficulties'
             # In the original class-level tensors 'gt_class_boxes', etc., 'ind' corresponds to object with index...
-            original_ind = torch.tensor(
-                range(gt_class_boxes.size(0)), device=gt_class_boxes_detected.device, dtype=torch.long
-            )[gt_class_images == this_image][ind]
+            original_ind = object_indices[ind]
             # We need 'original_ind' to update 'gt_class_boxes_detected'
 
             # If the maximum overlap is greater than the threshold of 0.5, it's a match

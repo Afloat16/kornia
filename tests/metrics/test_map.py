@@ -39,6 +39,31 @@ class TestMeanAveragePrecision(BaseTester):
         self.assert_close(mean_ap[0], torch.tensor(1.0, device=device, dtype=dtype))
         self.assert_close(mean_ap[1][1], 1.0)
 
+    def test_duplicate_matches_keep_per_image_ground_truth_indices(self, device, dtype):
+        # Global score order interleaves the images. The repeated detection in image 2
+        # must not consume an object in image 0, and image 1 has no ground truth.
+        boxes = torch.tensor([[0.0, 0.0, 0.2, 0.2], [0.4, 0.4, 0.6, 0.6]], device=device, dtype=dtype)
+        labels = torch.ones(2, device=device, dtype=torch.long)
+        gt_boxes = [boxes, boxes[:0], boxes[:1]]
+        gt_labels = [labels, labels[:0], labels[:1]]
+        pred_boxes = [boxes, boxes[:1], boxes[:1].repeat(2, 1)]
+        pred_labels = [labels, labels[:1], labels]
+        pred_scores = [
+            boxes.new_tensor([0.9, 0.7]),
+            boxes.new_tensor([0.85]),
+            boxes.new_tensor([0.95, 0.8]),
+        ]
+
+        mean_ap, per_class = kornia.metrics.mean_average_precision(
+            pred_boxes, pred_labels, pred_scores, gt_boxes, gt_labels, 2
+        )
+
+        # TP, TP, FP, FP, TP: precision 1 reaches recalls 0 through 0.6;
+        # precision 3/5 reaches the remaining four VOC recall thresholds.
+        expected = (7 + 4 * 3 / 5) / 11
+        self.assert_close(mean_ap, boxes.new_tensor(expected))
+        self.assert_close(boxes.new_tensor(per_class[1]), boxes.new_tensor(expected))
+
     def test_recall_per_class(self, device, dtype):
         # Two objects of different classes in one image, each detected exactly. Recall is taken
         # over the objects of the class being scored, so both classes reach recall 1 and AP 1.
