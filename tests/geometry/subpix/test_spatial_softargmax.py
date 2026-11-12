@@ -782,15 +782,37 @@ class TestConvSoftArgmax3d(BaseTester):
         self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
-    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer):
-        # The positivity check reads a tensor temperature; it must not break graph capture.
+    @pytest.mark.parametrize(
+        "kernel_size,stride,padding",
+        [((3, 3, 3), (1, 1, 1), (1, 1, 1)), ((4, 2, 6), (2, 1, 3), (2, 1, 3))],
+    )
+    def test_dynamo_tensor_temperature(self, device, dtype, torch_optimizer, kernel_size, stride, padding):
+        # The positivity check reads a tensor temperature; it must not break graph capture. Also cover unequal
+        # strides and even windows, whose centre is the mean of adjacent coordinate samples on each axis.
         data = torch.zeros(1, 1, 3, 5, 7, device=device, dtype=dtype)
         data[..., 1, 2, 4] = 1.0
         temperature = torch.tensor(0.5, device=device, dtype=dtype)
         op = kornia.geometry.subpix.conv_soft_argmax3d
         op_opt = torch_optimizer(op, fullgraph=True)
-        for expected, actual in zip(op(data, temperature=temperature), op_opt(data, temperature=temperature)):
+        kwargs = {"kernel_size": kernel_size, "stride": stride, "padding": padding, "temperature": temperature}
+        for expected, actual in zip(op(data, **kwargs), op_opt(data, **kwargs)):
             self.assert_close(expected, actual)
+
+    @pytest.mark.parametrize("first_column", [256, 2048])
+    def test_even_window_center_rounds_coordinate_samples(self, device, dtype, first_column):
+        # A flat interior window reports the mean of its already-rounded corner coordinates. For bfloat16 at
+        # 256, corners [256, 257, 258, 259] round to [256, 256, 258, 260], so adjacent means round to
+        # [256, 256, 260]. Float16 has the same pattern at 2048. An analytic half-pixel ramp would round differently.
+        data = torch.zeros(1, 1, 3, 3, first_column + 6, device=device, dtype=dtype)
+        coords, _ = kornia.geometry.subpix.conv_soft_argmax3d(data, (2, 2, 2), normalized_coordinates=False)
+        if dtype == torch.bfloat16:
+            values = [256.0, 256.0, 260.0] if first_column == 256 else [2048.0, 2048.0, 2048.0]
+        elif dtype == torch.float16 and first_column == 2048:
+            values = [2048.0, 2048.0, 2052.0]
+        else:
+            values = [first_column + 0.5, first_column + 1.5, first_column + 2.5]
+        expected = torch.tensor(values, device=device, dtype=dtype)
+        self.assert_close(coords[0, 0, 1, 1, 1, first_column + 1 : first_column + 4], expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("kernel_size", [(3, 3, 3), (5, 5, 5), (5, 3, 4), (4, 4, 2)])
     def test_window_offset_in_pixels_5017(self, device, dtype, kernel_size):

@@ -610,7 +610,6 @@ def conv_soft_argmax3d(
     dtype: torch.dtype = input.dtype
     input = input.reshape(b * c, 1, d, h, w)
 
-    center_kernel: torch.Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
 
     if not (0 <= 2 * pz <= kz and 0 <= 2 * py <= ky and 0 <= 2 * px <= kx):
@@ -636,6 +635,14 @@ def conv_soft_argmax3d(
     grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
     grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
+    # Only the central one or two coordinate samples per axis have nonzero weights. Cropping to that support
+    # avoids a dense kz-by-ky-by-kx CPU convolution, while keeping the coordinate grid's original rounding.
+    if device.type == "cpu":
+        front, top, left = (kz - 1) // 2, (ky - 1) // 2, (kx - 1) // 2
+        grid_global = grid_global[..., front : d + 2 * pz - front, top : h + 2 * py - top, left : w + 2 * px - left]
+        center_kernel = _get_center_kernel3d(2 - kz % 2, 2 - ky % 2, 2 - kx % 2, device).to(dtype)
+    else:
+        center_kernel = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
     grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=(sz, sy, sx))
 
     # Coordinates of maxima residual to window center: the softmax-weighted voxel offsets of each window
