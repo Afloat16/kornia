@@ -49,8 +49,8 @@ def sample_keypoints(
 
 def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
     """Get grid of provided layout."""
-    xs = (torch.arange(W, device=device) + 0.5) / W * 2 - 1
-    ys = (torch.arange(H, device=device) + 0.5) / H * 2 - 1
+    xs = (torch.arange(W, device=device, dtype=torch.float32) + 0.5) / W * 2 - 1
+    ys = (torch.arange(H, device=device, dtype=torch.float32) + 0.5) / H * 2 - 1
     yy, xx = torch.meshgrid(ys, xs, indexing="ij")
     base = torch.stack((xx, yy), dim=-1).reshape(1, H * W, 2)
     return base.expand(B, -1, -1)

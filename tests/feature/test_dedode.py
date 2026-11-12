@@ -210,6 +210,20 @@ class TestDeDoDePadding(BaseTester):
         self.assert_close(scores_d, scores)
         self.assert_close(descs_d, descs)
 
+    def test_forward_preserves_coordinate_dtype_with_double_default(self, device, dtype):
+        model = self._model(device, dtype)
+        image = self._image(device, dtype)
+        expected = model(image, n=40)
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            actual = model(image, n=40)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+        assert actual[0].dtype == torch.float32
+        for result, reference in zip(actual, expected):
+            self.assert_close(result, reference)
+
     def test_dense_descriptors_have_the_size_of_the_image_5730(self, device, dtype):
         model = self._model(device, dtype)
         x = self._image(device, dtype)
