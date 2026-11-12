@@ -203,6 +203,19 @@ class KMeans:
             2D torch.Tensor of shape N, C
 
         """
+        # Direct cdist reduces each pair inside the CPU kernel, without the N*C*D broadcast intermediates.
+        # One-thread float32 predict at (N, C, D)=(4096, 8, 3): 299 us -> 91 us.
+        # Do not use its matrix-multiplication path: subtracting squared norms can erase nearby distances.
+        # Keep the pointwise path for forward AD and torch.func, since _cdist_forward has no JVP on supported
+        # Torch versions. The other backends retain their current implementation until measured there.
+        if (
+            data1.device.type == "cpu"
+            and data1.dtype in (torch.float32, torch.float64)
+            and data1.dtype == data2.dtype
+            and not torch._C._are_functorch_transforms_active()
+            and all(torch.autograd.forward_ad.unpack_dual(t).tangent is None for t in (data1, data2))
+        ):
+            return torch.cdist(data1, data2, p=2.0, compute_mode="donot_use_mm_for_euclid_dist")
         # N*1*D
         A = data1[:, None, ...]
         # 1*C*D

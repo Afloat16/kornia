@@ -1,0 +1,1 @@
+`KMeans.fit` and `KMeans.predict` avoid point-by-center-by-feature intermediates for ordinary floating-point CPU distance calculations, reducing memory and runtime while retaining the existing forward-mode differentiation path.
