@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import pickle
 import re
@@ -102,9 +103,9 @@ class TestModelBaseMixinTensorToType:
 
 
 def _decoded_files(directory):
-    """The decoded images of a directory, keyed by file name without its ``_YYYYmmdd_HHMMSS`` timestamp."""
+    """The decoded images of a directory, keyed by file name without its generated timestamp and identifier."""
     return {
-        re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+        re.sub(r"_\d{8}_\d{6}_[0-9a-f]{32}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
         for p in sorted(directory.iterdir())
     }
 
@@ -233,6 +234,18 @@ class TestModelBaseMixinSaveWritesRealFiles:
     `write_image` accepts neither -- PNG is uint8/uint16 only, and it takes one
     image: (3, H, W), (1, H, W), (H, W) or, for PNG, (4, H, W).
     """
+
+    @pytest.mark.parametrize("method", ["save", "_save_outputs"])
+    def test_repeated_saves_keep_each_batch(self, method, tmp_path):
+        mixin = DummyMixin()
+        with patch("kornia.models.base.datetime") as clock:
+            clock.datetime.now.return_value = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
+            for value in (0.0, 1.0):
+                getattr(mixin, method)(torch.full((2, 3, 4, 4), value), str(tmp_path))
+        files = list(tmp_path.glob("*.png"))
+        assert len(files) == 4
+        pixels = sorted(int(load_image(path, ImageLoadType.UNCHANGED)[0, 0, 0]) for path in files)
+        assert pixels == [0, 0, 255, 255]
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
     def test_a_float_visualization_is_written(self, tmp_path, dtype):

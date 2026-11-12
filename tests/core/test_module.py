@@ -15,13 +15,14 @@
 # limitations under the License.
 #
 
+import datetime
 import io
 import os
 import struct
 import sys
 import zlib
 from typing import NamedTuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -134,6 +135,21 @@ class TestImageModuleMixIn:
         save_path = tmpdir.join("test_image.jpg")
         img_module.save(name=save_path)
         assert os.path.exists(save_path)
+
+    def test_default_save_names_keep_repeated_outputs(self, img_module, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch("kornia.core.mixin.image_module.datetime") as clock:
+            clock.datetime.now.return_value = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
+            for value in (0.0, 1.0):
+                img_module._output_image = torch.full((3, 4, 4), value)
+                img_module.save()
+        files = list(tmp_path.glob("Kornia-*.jpg"))
+        assert len(files) == 2
+        pixels = []
+        for path in files:
+            with PILImage.open(path) as image:
+                pixels.append(int(np.asarray(image)[0, 0, 0]))
+        assert sorted(pixels) == [0, 255]
 
     @pytest.mark.parametrize("method", ["show", "save"])
     @pytest.mark.parametrize("n_row", [None, 0, -1])

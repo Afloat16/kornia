@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Generic, List, Optional, TypeVar, Union, cast
 
@@ -122,7 +123,7 @@ class ModelBaseMixin:
 
         """
         os.makedirs(directory, exist_ok=True)
-        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
+        timestamp = f"{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
         if isinstance(output, list):
             for i, out in enumerate(output):
                 _write_png_batch(os.path.join(directory, f"{self.name}_{timestamp}_{i}"), out)
@@ -144,12 +145,12 @@ class ModelBaseMixin:
             suffix: Optional suffix to add to the filename.
 
         """
+        timestamp = f"{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
         if directory is None:
-            name = f"{self.name}{suffix}_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}"
+            name = f"{self.name}{suffix}_{timestamp}"
             directory = os.path.join("kornia_outputs", name)
 
         os.makedirs(directory, exist_ok=True)
-        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
                 _write_png_batch(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}"), out)

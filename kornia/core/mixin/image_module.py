@@ -20,6 +20,7 @@ import inspect
 import math
 import os
 import sys
+import uuid
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, List, Literal, Optional, Tuple, Union
@@ -511,7 +512,7 @@ class ImageModuleMixIn:
         output_image = self._get_output_image().detach().cpu()
 
         if name is None:
-            name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
+            name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}.jpg"
         if len(output_image.shape) == 3:
             out_image = output_image
         else:

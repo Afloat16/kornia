@@ -205,8 +205,10 @@ class TestSemanticSegmentation(BaseTester):
         for output_type in ("torch", "pil"):
             directory = tmp_path / output_type
             model.save(images, directory=str(directory), output_type=output_type, manual_seed=7)
-            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
-            written[output_type] = {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in directory.iterdir()}
+            # File names carry a generated timestamp and identifier, which differ between the two calls.
+            written[output_type] = {
+                re.sub(r"_\d{8}_\d{6}_[0-9a-f]{32}", "", p.name): p.read_bytes() for p in directory.iterdir()
+            }
 
         # source, mask and overlay of each of the two images
         assert len(written["torch"]) == 6
@@ -216,7 +218,7 @@ class TestSemanticSegmentation(BaseTester):
         reference = tmp_path / "reference"
         model._save_outputs(model.visualize(images, manual_seed=7), str(reference), suffix="_mask")
         masks = {name: data for name, data in written["torch"].items() if "_mask_" in name}
-        assert masks == {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in reference.iterdir()}
+        assert masks == {re.sub(r"_\d{8}_\d{6}_[0-9a-f]{32}", "", p.name): p.read_bytes() for p in reference.iterdir()}
         # and the colormap reaches it too: "random" is the only one there is
         with pytest.raises(ValueError, match="Unsupported colormap"):
             model.save(images, directory=str(tmp_path / "jet"), colormap="jet")

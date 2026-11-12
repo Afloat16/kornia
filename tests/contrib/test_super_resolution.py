@@ -88,9 +88,9 @@ class TestSuperResolutionBuilders(BaseTester):
         for output_type in ("torch", "pil"):
             directory = tmp_path / output_type
             model.save(images, directory=str(directory), output_type=output_type)
-            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
+            # File names carry a generated timestamp and identifier, which differ between the two calls.
             written[output_type] = {
-                re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+                re.sub(r"_\d{8}_\d{6}_[0-9a-f]{32}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
                 for p in sorted(directory.iterdir())
             }
 

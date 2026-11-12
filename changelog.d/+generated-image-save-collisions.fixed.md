@@ -1,0 +1,1 @@
+Automatically named image and model visualizations include a unique identifier, preserving every output when saves share the same timestamp. Explicit `ImageModule.save(name=...)` paths keep their existing behavior.
