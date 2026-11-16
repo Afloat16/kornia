@@ -127,6 +127,11 @@ class _HausdorffERLossBase(nn.Module):
             ``error * sum_i (i + 1) ** alpha * erode^(i + 1)(error > 0)`` for ``i = 0, ..., k - 1``, of the shape of
             ``pred``.
         """
+        loss, output_dtype = self._accumulate_erosion(pred, target)
+        return loss.to(output_dtype)
+
+    def _accumulate_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.dtype]:
+        """Accumulate a class loss and retain the dtype of its original arithmetic."""
         # The soft threshold sits where thresholding ``pred`` at 0.5 starts to get the pixel wrong, so every
         # misclassified pixel counts and no correct one does; a fully wrong pixel gives 1.
         error = ((pred - target) ** 2 - _MISCLASSIFIED_SQUARED_ERROR) / (1 - _MISCLASSIFIED_SQUARED_ERROR)
@@ -136,12 +141,26 @@ class _HausdorffERLossBase(nn.Module):
         # reaches each misclassified pixel through ``error``, in proportion to its depth weight. Eroding ``error``
         # itself gives the same value on a binary prediction, but a minimum hands each window's gradient to one pixel.
         survivors = (error > 0).to(error.dtype)
-        weight = torch.zeros_like(error)
+        wide_accumulation = error.dtype in (torch.float16, torch.bfloat16)
+        output_dtype = error.dtype
+        weight = torch.zeros_like(error, dtype=torch.float32 if wide_accumulation else error.dtype)
+        alpha: float | torch.Tensor = self.alpha
+        if wide_accumulation and isinstance(alpha, torch.Tensor) and alpha.dtype in (torch.float16, torch.bfloat16):
+            alpha = alpha.float()
         for i in range(self.k):
             survivors = self._erode(survivors)
-            weight = weight + survivors * (i + 1) ** self.alpha
+            power = (i + 1) ** alpha
+            weighted_survivors = survivors
+            if wide_accumulation:
+                # Preserve scalar/batch exponent promotion and the dtype returned by an overridden erosion.
+                original_power = self.alpha if isinstance(self.alpha, torch.Tensor) else power
+                output_dtype = torch.promote_types(output_dtype, torch.result_type(survivors, original_power))
+                if survivors.dtype in (torch.float16, torch.bfloat16):
+                    weighted_survivors = survivors.float()
+            weight = weight + weighted_survivors * power
 
-        return error * weight
+        loss = error * weight
+        return loss, output_dtype if wide_accumulation else loss.dtype
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute Hausdorff loss.
@@ -172,19 +191,28 @@ class _HausdorffERLossBase(nn.Module):
                 f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
 
-        out = torch.stack(
-            [
-                self.perform_erosion(
-                    pred[:, i : i + 1],
-                    torch.where(
-                        target == i,
-                        torch.tensor(1, device=target.device, dtype=target.dtype),
-                        torch.tensor(0, device=target.device, dtype=target.dtype),
-                    ),
-                )
-                for i in range(pred.size(1))
-            ]
+        # Delay narrowing the default half-precision map until after reduction: a finite mean can include pixels
+        # outside the output dtype's range. Keep custom perform_erosion hooks on their original call path.
+        delay_cast = (
+            pred.dtype in (torch.float16, torch.bfloat16)
+            and getattr(self.perform_erosion, "__func__", None) is _HausdorffERLossBase.perform_erosion
         )
+        output_dtype: torch.dtype | None = None
+        losses = []
+        for i in range(pred.size(1)):
+            class_pred = pred[:, i : i + 1]
+            class_target = torch.where(
+                target == i,
+                torch.tensor(1, device=target.device, dtype=target.dtype),
+                torch.tensor(0, device=target.device, dtype=target.dtype),
+            )
+            if delay_cast:
+                loss, class_dtype = self._accumulate_erosion(class_pred, class_target)
+                output_dtype = class_dtype if output_dtype is None else torch.promote_types(output_dtype, class_dtype)
+            else:
+                loss = self.perform_erosion(class_pred, class_target)
+            losses.append(loss)
+        out = torch.stack(losses)
 
         if self.reduction == "mean":
             out = out.mean()
@@ -195,7 +223,7 @@ class _HausdorffERLossBase(nn.Module):
         else:
             raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")
 
-        return out
+        return out.to(output_dtype) if output_dtype is not None else out
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
@@ -218,7 +246,11 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - The ``[0, C)`` check reads the data, so it is skipped wherever the call captures a graph
           (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
           those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
-        - The default ``'mean'`` is the plain mean of the ``'none'`` tensor.
+        - The default ``'mean'`` averages over classes, batch elements and spatial positions.
+        - For half-precision predictions, weights and the weighted loss are accumulated and reduced in at least
+          float32 before restoring the usual output dtype. The error threshold and erosion masks keep their input
+          arithmetic. A representable mean can therefore remain finite even when some per-pixel scores exceed the
+          output dtype's range; values outside that range still overflow on return.
         - :math:`e` is nonzero exactly where thresholding :math:`p_c` at 0.5 gets the pixel wrong,
           :math:`|p_c - [y = c]| > 1/2`, and is 1 for a fully wrong pixel. A correct pixel adds nothing and gets no
           gradient, however uncertain; a probability of exactly 0.5 counts as correct. With two classes this is the

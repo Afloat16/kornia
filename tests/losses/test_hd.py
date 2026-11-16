@@ -403,3 +403,133 @@ class TestConventionsHausdorffERLoss(BaseTester):
         pred = torch.stack([1 - fg, fg], 1)
         target = torch.zeros(1, 1, *spatial, dtype=torch.long, device=device)
         self.assert_close(hd(reduction="sum")(pred, target), torch.tensor(expected, device=device, dtype=dtype))
+
+
+class TestHausdorffAccumulation(BaseTester):
+    @pytest.mark.parametrize(
+        "hd,ndim,size,side,k,alpha",
+        [(kornia.losses.HausdorffERLoss, 2, 256, 150, 60, 2), (kornia.losses.HausdorffERLoss3D, 3, 40, 30, 13, 4)],
+    )
+    @pytest.mark.parametrize("wrong_probability", [0.875, 1.0])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_deep_error_does_not_overflow_before_reduction(
+        self, hd, ndim, size, side, k, alpha, wrong_probability, reduction, device, dtype
+    ):
+        # Independent city-block depth of a square/cube; no erosion operation is used by the reference.
+        # sum(i**2, i=1..60) = 73810 and sum(i**4, i=1..13) = 89271 exceed float16's range, but multiplying
+        # by the exactly representable error 11/16 (p=7/8) gives representable per-pixel scores.
+        margin = (size - side) // 2
+        coordinate = torch.arange(size)
+        axis_depth = torch.minimum(coordinate - margin + 1, margin + side - coordinate)
+        axes = torch.meshgrid(*([axis_depth] * ndim), indexing="ij")
+        depth = torch.stack(axes).amin(0).clamp_min(0)
+        steps = (depth - 1).clamp(0, k).double()
+        if alpha == 2:
+            weight = steps * (steps + 1) * (2 * steps + 1) / 6
+        else:
+            weight = steps * (steps + 1) * (2 * steps + 1) * (3 * steps.square() + 3 * steps - 1) / 30
+        error = (wrong_probability**2 - 0.25) / 0.75
+        reference = (error * weight)[None, None, None].expand(2, 1, 1, *([size] * ndim))
+        expected = reference.mean() if reduction == "mean" else reference.sum() if reduction == "sum" else reference
+
+        foreground = torch.where(depth > 0, wrong_probability, 0.0).to(device, dtype)
+        pred = torch.stack([1 - foreground, foreground])[None].requires_grad_()
+        target = torch.zeros(1, 1, *([size] * ndim), device=device, dtype=torch.long)
+        actual = hd(k=k, alpha=float(alpha), reduction=reduction)(pred, target)
+
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected.to(device, dtype))
+        if reduction == "mean":
+            # With p=1, some per-pixel values really exceed float16, but their mean is still representable.
+            # Casting the map to half before reducing would incorrectly keep this mean infinite.
+            assert torch.isfinite(actual)
+            (grad,) = torch.autograd.grad(actual, pred)
+            assert torch.isfinite(grad).all()
+            expected_grad = torch.stack([-weight, weight])[None] * (2 * wrong_probability / 0.75) / pred.numel()
+            self.assert_close(grad, expected_grad.to(device, dtype))
+
+    @pytest.mark.parametrize("per_sample", [False, True])
+    def test_tensor_exponent_does_not_overflow_before_weighting(self, per_sample, device, dtype):
+        # 4**8 = 65536 already overflows a half exponent's power before it reaches the accumulated weight.
+        # A small false-positive square makes both the mean and the exponent derivative representable.
+        size, side, k = 32, 12, 4
+        coordinate = torch.arange(size)
+        margin = (size - side) // 2
+        axis_depth = torch.minimum(coordinate - margin + 1, margin + side - coordinate)
+        depth = torch.minimum(axis_depth[:, None], axis_depth[None, :]).clamp_min(0)
+        steps = (depth - 1).clamp(0, k)
+        exponents = [8.0, 7.0] if per_sample else [8.0, 8.0]
+        weights = torch.stack(
+            [sum((steps >= i).double() * i**exponent for i in range(1, k + 1)) for exponent in exponents]
+        )
+        derivatives = torch.stack(
+            [sum((steps >= i).double() * i**exponent * np.log(i) for i in range(1, k + 1)) for exponent in exponents]
+        )
+        foreground = torch.where(depth > 0, 0.875, 0.0).to(device, dtype)
+        pred = torch.stack([1 - foreground, foreground])[None].expand(2, 2, size, size).clone().requires_grad_()
+        target = torch.zeros(2, 1, size, size, device=device, dtype=torch.long)
+        alpha = torch.tensor(exponents if per_sample else 8.0, device=device, dtype=dtype)
+        if per_sample:
+            alpha = alpha.view(2, 1, 1, 1)
+        alpha.requires_grad_()
+
+        actual = kornia.losses.HausdorffERLoss(k=k, alpha=alpha)(pred, target)
+        pred_grad, alpha_grad = torch.autograd.grad(actual, (pred, alpha))
+
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual)
+        assert torch.isfinite(pred_grad).all()
+        assert torch.isfinite(alpha_grad).all()
+        self.assert_close(actual, ((11 / 16) * weights.mean()).to(device, dtype))
+        expected_pred_grad = torch.stack([-weights, weights], dim=1) * (7 / 3) / pred.numel()
+        self.assert_close(pred_grad, expected_pred_grad.to(device, dtype))
+        expected_alpha_grad = (11 / 16) * derivatives.mean(dim=(-2, -1)) / 2
+        expected_alpha_grad = expected_alpha_grad.view(2, 1, 1, 1) if per_sample else expected_alpha_grad.sum()
+        self.assert_close(alpha_grad, expected_alpha_grad.to(device, dtype))
+
+    @pytest.mark.parametrize("output_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_erosion_hook_keeps_original_input_and_output_promotion(self, output_dtype, reduction, device, dtype):
+        if device.type == "mps" and output_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+
+        class ErosionHook(kornia.losses.HausdorffERLoss):
+            def _erode(self, survivors):
+                self.seen.append(survivors.dtype)
+                return super()._erode(survivors).to(output_dtype)
+
+        pred = torch.tensor([0.125, 0.875], device=device, dtype=dtype).view(1, 2, 1, 1).expand(1, 2, 4, 4)
+        target = torch.zeros(1, 1, 4, 4, device=device, dtype=torch.long)
+        loss = ErosionHook(k=3, reduction=reduction)
+        loss.seen = []
+        actual = loss(pred, target)
+
+        assert loss.seen == [dtype, output_dtype, output_dtype] * 2
+        assert actual.dtype == torch.promote_types(dtype, output_dtype)
+        # The constant wrong set survives every erosion: (11/16) * (1 + 4 + 9) = 9.625 per element.
+        expected = torch.full((2, 1, 1, 4, 4), 9.625, device=device, dtype=actual.dtype)
+        expected = expected.mean() if reduction == "mean" else expected.sum() if reduction == "sum" else expected
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("output_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_perform_erosion_override_receives_original_input(self, output_dtype, reduction, device, dtype):
+        if device.type == "mps" and output_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+
+        class CustomLoss(kornia.losses.HausdorffERLoss):
+            def perform_erosion(self, pred, target):
+                self.seen.append((pred.dtype, target.dtype))
+                return (pred - target).to(output_dtype).square()
+
+        pred = torch.tensor([0.125, 0.875], device=device, dtype=dtype).view(1, 2, 1, 1).expand(1, 2, 4, 4)
+        target = torch.zeros(1, 1, 4, 4, device=device, dtype=torch.long)
+        loss = CustomLoss(reduction=reduction)
+        loss.seen = []
+        actual = loss(pred, target)
+
+        assert loss.seen == [(dtype, torch.long)] * 2
+        assert actual.dtype == output_dtype
+        expected = torch.full((2, 1, 1, 4, 4), 49 / 64, device=device, dtype=output_dtype)
+        expected = expected.mean() if reduction == "mean" else expected.sum() if reduction == "sum" else expected
+        self.assert_close(actual, expected, rtol=0, atol=0)

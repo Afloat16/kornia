@@ -1,0 +1,1 @@
+`HausdorffERLoss` and `HausdorffERLoss3D` accumulate half-precision erosion weights and reduce weighted errors in float32 before restoring the output dtype, avoiding infinite losses and gradients when the result is representable. Error thresholds, erosion callbacks and tensor-exponent dtype promotion are preserved.
