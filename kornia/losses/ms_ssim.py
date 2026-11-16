@@ -291,9 +291,7 @@ class MS_SSIMLoss(nn.Module):
         channels = image.shape[1]
         if separable:
             horizontal = F.conv2d(image, masks, groups=channels, padding=(0, self.pad))
-            return F.conv2d(
-                horizontal, masks.transpose(-1, -2), groups=masks.shape[0], padding=(self.pad, 0)
-            )
+            return F.conv2d(horizontal, masks.transpose(-1, -2), groups=masks.shape[0], padding=(self.pad, 0))
         return F.conv2d(image, masks, groups=channels, padding=self.pad)
 
     def _compute_loss(
