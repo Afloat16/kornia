@@ -1,0 +1,1 @@
+Reduce the cost of large-window, multi-channel `MS_SSIMLoss` computations in float64 on CPU using separable Gaussian filters. Preserve dense filtering for float32, half precision, grayscale, small windows, other devices, and legacy modules without stored sigmas.

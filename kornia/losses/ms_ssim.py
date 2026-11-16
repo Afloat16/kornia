@@ -228,6 +228,7 @@ class MS_SSIMLoss(nn.Module):
             )
 
         mask_dtype = self._g_masks.dtype
+        separable = False
         if img1.is_complex() or img2.is_complex():
             output_dtype = torch.promote_types(img1.dtype, img2.dtype)
             compute_dtype = output_dtype
@@ -246,9 +247,18 @@ class MS_SSIMLoss(nn.Module):
                 # Built in float64: ``.double()`` casts the buffer but keeps its float32 rounding.
                 size = 2 * self.pad + 1
                 device = self._g_masks.device
-                g_masks = torch.stack(
-                    [self._fspecial_gauss_2d(size, sigma, device, torch.float64) for sigma in self.sigmas]
-                ).unsqueeze(1)
+                # Large, multi-channel float64 CPU kernels benefit from two 1-D convolutions. Keep float32 on
+                # the dense path: its nearly constant-image variances are sensitive to the reduction order.
+                # Small kernels and grayscale keep the existing path, where the extra convolution can cost more.
+                separable = img1.device.type == "cpu" and img1.shape[1] > 1 and self.pad >= 8
+                if separable:
+                    g_masks = torch.stack(
+                        [self._fspecial_gauss_1d(size, sigma, device, torch.float64) for sigma in self.sigmas]
+                    )[:, None, None, :]
+                else:
+                    g_masks = torch.stack(
+                        [self._fspecial_gauss_2d(size, sigma, device, torch.float64) for sigma in self.sigmas]
+                    ).unsqueeze(1)
             else:
                 g_masks = self._g_masks.to(compute_dtype)
                 if mask_dtype in (torch.float16, torch.bfloat16):
@@ -266,30 +276,41 @@ class MS_SSIMLoss(nn.Module):
 
         if img1.device.type == "cpu":
             with torch.autocast(device_type="cpu", enabled=False):
-                loss = self._compute_loss(img1, img2, g_masks)
+                loss = self._compute_loss(img1, img2, g_masks, separable)
         elif img1.device.type == "cuda":
             with torch.autocast(device_type="cuda", enabled=False):
-                loss = self._compute_loss(img1, img2, g_masks)
+                loss = self._compute_loss(img1, img2, g_masks, separable)
         elif img1.device.type == "mps":
             with torch.autocast(device_type="mps", enabled=False):
-                loss = self._compute_loss(img1, img2, g_masks)
+                loss = self._compute_loss(img1, img2, g_masks, separable)
         else:
-            loss = self._compute_loss(img1, img2, g_masks)
+            loss = self._compute_loss(img1, img2, g_masks, separable)
         return loss.to(output_dtype)
 
-    def _compute_loss(self, img1: torch.Tensor, img2: torch.Tensor, g_masks: torch.Tensor) -> torch.Tensor:
+    def _gaussian_filter(self, image: torch.Tensor, masks: torch.Tensor, separable: bool) -> torch.Tensor:
+        channels = image.shape[1]
+        if separable:
+            horizontal = F.conv2d(image, masks, groups=channels, padding=(0, self.pad))
+            return F.conv2d(
+                horizontal, masks.transpose(-1, -2), groups=masks.shape[0], padding=(self.pad, 0)
+            )
+        return F.conv2d(image, masks, groups=channels, padding=self.pad)
+
+    def _compute_loss(
+        self, img1: torch.Tensor, img2: torch.Tensor, g_masks: torch.Tensor, separable: bool = False
+    ) -> torch.Tensor:
         CH: int = img1.shape[-3]
         S: int = self.num_scales
 
-        mux = F.conv2d(img1, g_masks, groups=CH, padding=self.pad)
-        muy = F.conv2d(img2, g_masks, groups=CH, padding=self.pad)
+        mux = self._gaussian_filter(img1, g_masks, separable)
+        muy = self._gaussian_filter(img2, g_masks, separable)
         mux2 = mux * mux
         muy2 = muy * muy
         muxy = mux * muy
 
-        sigmax2 = F.conv2d(img1 * img1, g_masks, groups=CH, padding=self.pad) - mux2
-        sigmay2 = F.conv2d(img2 * img2, g_masks, groups=CH, padding=self.pad) - muy2
-        sigmaxy = F.conv2d(img1 * img2, g_masks, groups=CH, padding=self.pad) - muxy
+        sigmax2 = self._gaussian_filter(img1 * img1, g_masks, separable) - mux2
+        sigmay2 = self._gaussian_filter(img2 * img2, g_masks, separable) - muy2
+        sigmaxy = self._gaussian_filter(img1 * img2, g_masks, separable) - muxy
 
         lc = (2 * muxy + self.C1) / (mux2 + muy2 + self.C1)
         cs = (2 * sigmaxy + self.C2) / (sigmax2 + sigmay2 + self.C2)
@@ -305,7 +326,7 @@ class MS_SSIMLoss(nn.Module):
         loss_l1 = (img1 - img2).abs()
 
         # Average over the channels of the l1 loss filtered at the coarsest scale
-        gaussian_l1 = F.conv2d(loss_l1, g_masks[S - 1 :: S], groups=CH, padding=self.pad).mean(1)
+        gaussian_l1 = self._gaussian_filter(loss_l1, g_masks[S - 1 :: S], separable).mean(1)
 
         # Compute MS-SSIM + L1 loss
         loss = self.alpha * loss_ms_ssim + (1 - self.alpha) * gaussian_l1 / self.DR

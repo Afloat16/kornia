@@ -394,6 +394,41 @@ class TestMS_SSIMLoss(BaseTester):
         tol = {torch.float16: 1e-3, torch.bfloat16: 1e-2}.get(dtype, 1e-4)
         self.assert_close(loss(img1, img2), expected, atol=tol, rtol=tol)
 
+
+    @pytest.mark.applies_to(
+        dtypes=("float64",), when=lambda p: p["device_name"] == "cpu", reason="CPU float64 large-window path"
+    )
+    def test_cpu_float64_large_window_reference(self, device, dtype):
+        # Direct 2-D NumPy correlation, using gauss/filt/ms_ssim_loss from test_reference:
+        # sigmas = (0.5, 1.0, 2.0, 4.0, 8.0)
+        # x = (np.arange(60).reshape(3, 4, 5) * np.array([1, 3, 7]).reshape(3, 1, 1) % 11) / 10
+        # ms = ms_ssim_loss(x, x**2, sigmas=sigmas)
+        # l1 = np.mean([filt(np.abs(c - c**2), gauss(8.0, 33)) for c in x], axis=0)
+        # expected = 200 * (0.025 * ms + 0.975 * l1)
+        img1 = torch.arange(60, device=device, dtype=dtype).reshape(1, 3, 4, 5)
+        img1 = (img1 * torch.tensor([1.0, 3.0, 7.0], device=device, dtype=dtype).view(1, 3, 1, 1) % 11) / 10
+        expected = torch.tensor(
+            [[
+                [3.4159531885657923, 3.1209631839028025, 3.1249713089177424, 3.244156942188572, 3.4808297969451],
+                [3.042153358763352, 3.0416063656366648, 3.0302852377965324, 2.9976731447857756, 3.0935781986858446],
+                [2.934857751751009, 3.049550964159115, 2.984251266975303, 2.98478826800148, 3.0674565533161102],
+                [3.076456816737929, 3.1676000521072, 3.081889213749605, 3.1441288827578324, 3.065622057582539],
+            ]],
+            device=device,
+            dtype=dtype,
+        )
+        loss = kornia.losses.MS_SSIMLoss(reduction="none").to(device, dtype)
+        self.assert_close(loss(img1, img1**2), expected, rtol=1e-12, atol=0.0)
+
+    @pytest.mark.applies_to(
+        dtypes=("float64",), when=lambda p: p["device_name"] == "cpu", reason="CPU float64 large-window path"
+    )
+    def test_cpu_float64_multichannel_gradcheck(self, device, dtype):
+        generator = torch.Generator().manual_seed(6)
+        img1 = torch.rand(1, 2, 3, 4, generator=generator, dtype=dtype).to(device)
+        img2 = torch.rand(1, 2, 3, 4, generator=generator, dtype=dtype).to(device)
+        self.gradcheck(kornia.losses.MS_SSIMLoss().to(device, dtype), (img1, img2))
+
     def test_load_legacy_state_dict(self, device, dtype):
         class Wrapper(torch.nn.Module):
             def __init__(self) -> None:
