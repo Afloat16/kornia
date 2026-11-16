@@ -141,6 +141,8 @@ class _HausdorffERLossBase(nn.Module):
         # reaches each misclassified pixel through ``error``, in proportion to its depth weight. Eroding ``error``
         # itself gives the same value on a binary prediction, but a minimum hands each window's gradient to one pixel.
         survivors = (error > 0).to(error.dtype)
+        # Widen only the weighted sum: input probabilities and erosion masks keep their original precision.
+        # One-thread CPU k=10 probes cost 2-10% for half inputs; the float32 controls stayed within 2%.
         wide_accumulation = error.dtype in (torch.float16, torch.bfloat16)
         output_dtype = error.dtype
         weight = torch.zeros_like(error, dtype=torch.float32 if wide_accumulation else error.dtype)
