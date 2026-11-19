@@ -1,0 +1,263 @@
+name: Review guided blur and KMeans timing
+on:
+  push:
+    branches: [validation-guided-kmeans-review-timing-20261119]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-guided-kmeans-review-timing-20261119
+  cancel-in-progress: false
+jobs:
+  timing:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-guided-kmeans-review-timing-20261119'
+    name: timing-${{ matrix.pr }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pr: 6827
+            head: e3e75668a5750f199a1c4dd085f7d8ba46af262f
+            source: kornia/contrib/kmeans.py
+          - pr: 6829
+            head: 4c88a94ed985012ff851ead18d6cb87e92195fc1
+            source: kornia/filters/guided.py
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      RAYON_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: 9a311912c0579ed010face500a26dca5360453b0
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install fixed CPU dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          .venv/bin/python -m pip install --no-cache-dir -e . numpy==2.3.5 pillow==13.0.0 kornia_rs==0.2.0
+      - name: Prepare exact source snapshots and benchmark harness
+        shell: bash
+        run: |
+          export KORNIA_BENCH_OUTPUT_DIR="$RUNNER_TEMP/review-timing-${{ matrix.pr }}"
+          echo "KORNIA_BENCH_OUTPUT_DIR=$KORNIA_BENCH_OUTPUT_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$KORNIA_BENCH_OUTPUT_DIR/geometry-kornia-benchmark-sources"
+          git fetch --no-write-fetch-head --no-tags --depth=1 origin '${{ matrix.head }}'
+          git show '${{ matrix.head }}:${{ matrix.source }}' > "$KORNIA_BENCH_OUTPUT_DIR/geometry-kornia-benchmark-sources/${{ matrix.pr }}.py"
+          git show '9a311912c0579ed010face500a26dca5360453b0:${{ matrix.source }}' > "$KORNIA_BENCH_OUTPUT_DIR/${{ matrix.pr }}-base.py"
+          cp benchmarks/common.py "$KORNIA_BENCH_OUTPUT_DIR/common.py"
+          cp docs/source/_static/img/models/loftr.jpg "$KORNIA_BENCH_OUTPUT_DIR/loftr.jpg"
+          .venv/bin/python -m pip freeze > "$KORNIA_BENCH_OUTPUT_DIR/packages.txt"
+          lscpu > "$KORNIA_BENCH_OUTPUT_DIR/cpu.txt"
+          cat > "$KORNIA_BENCH_OUTPUT_DIR/benchmark.py" <<'PYCODE'
+          """Exact-revision public-API timing follow-up; kept outside the repository diff."""
+
+          import argparse
+          import gc
+          import hashlib
+          import importlib
+          import importlib.util
+          import json
+          import os
+          import platform
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          parser = argparse.ArgumentParser()
+          parser.add_argument("--pr", type=int, choices=[6832, 6829, 6827], required=True)
+          parser.add_argument("--rounds", type=int, default=12)
+          parser.add_argument("--min-run-time", type=float, default=1.0)
+          parser.add_argument("--pin-cpu", action="store_true")
+          args = parser.parse_args()
+          original_affinity = sorted(os.sched_getaffinity(0))
+          if args.pin_cpu:
+              os.sched_setaffinity(0, {original_affinity[0]})
+          root = Path.cwd().resolve()
+          scratch = Path(os.environ.get("KORNIA_BENCH_OUTPUT_DIR", str(root.parent))).resolve()
+          scratch.mkdir(parents=True, exist_ok=True)
+          sys.path.insert(0, str(root))
+          import numpy as np
+          import torch
+          import kornia
+          from PIL import Image
+          from benchmarks import common
+
+          assert Path(kornia.__file__).resolve().is_relative_to(root), kornia.__file__
+          torch.set_num_threads(1)
+          torch.set_num_interop_threads(1)
+          base = "9a311912c0579ed010face500a26dca5360453b0"
+          definitions = {
+              6832: ("f0cf9530fd91e6dadd69c91972d281e92b751f4f", "kornia.contrib.histogram_matching", "histogram_matching"),
+              6829: ("4c88a94ed985012ff851ead18d6cb87e92195fc1", "kornia.filters.guided", "guided_blur"),
+              6827: ("e3e75668a5750f199a1c4dd085f7d8ba46af262f", "kornia.contrib.kmeans", "KMeans"),
+          }
+          head, module_name, api_name = definitions[args.pr]
+          relative_source = module_name.replace(".", "/") + ".py"
+          def git(*argv):
+              return subprocess.check_output(["git", *argv], cwd=root, text=True).strip()
+
+          assert git("rev-parse", "HEAD") == base
+          changed_library_paths = git("diff", "--name-only", base, head, "--", "kornia", "benchmarks").splitlines()
+          assert changed_library_paths == [relative_source], changed_library_paths
+          branch_source = scratch / "geometry-kornia-benchmark-sources" / f"{args.pr}.py"
+          assert git("hash-object", str(branch_source)) == git("rev-parse", f"{head}:{relative_source}")
+          base_module = importlib.import_module(module_name)
+          alias = module_name.rsplit(".", 1)[0] + f"._interleaved_branch_{args.pr}"
+          spec = importlib.util.spec_from_file_location(alias, branch_source)
+          branch_module = importlib.util.module_from_spec(spec)
+          sys.modules[alias] = branch_module
+          spec.loader.exec_module(branch_module)
+          implementations = {"base": getattr(base_module, api_name), "branch": getattr(branch_module, api_name)}
+          assert implementations["base"] is getattr(kornia.filters if args.pr == 6829 else kornia.contrib, api_name)
+
+          def digest(tensor):
+              return hashlib.sha256(tensor.detach().contiguous().view(torch.uint8).numpy().tobytes()).hexdigest()
+
+          def fingerprint(result):
+              if isinstance(result, torch.Tensor):
+                  return digest(result)
+              if isinstance(result, (tuple, list)):
+                  return [fingerprint(item) for item in result]
+              return {"centers": digest(result.cluster_centers), "labels": digest(result.cluster_assignments),
+                      "next_random": digest(torch.rand(32))}
+
+          workloads = []
+          inputs = []
+          if args.pr == 6832:
+              generator = torch.Generator().manual_seed(42)
+              source = torch.rand(2048, 2048, generator=generator)
+              template = torch.rand(2048, 2048, generator=generator)
+              inputs = [source, template]
+              def make_histogram(fn):
+                  def run():
+                      return fn(source, template)
+                  return run
+              workloads.append(("2048x2048_float32_histogram", {v: make_histogram(f) for v, f in implementations.items()},
+                                {"shape": [2048, 2048], "seed": 42, "dtype": "float32", "grad": False}))
+          else:
+              image_path = root / "docs/source/_static/img/models/loftr.jpg"
+              image_array = np.array(Image.open(image_path).convert("RGB"))
+              assert list(image_array.shape) == [466, 586, 3], image_array.shape
+              if args.pr == 6827:
+                  points = torch.from_numpy(image_array).reshape(-1, 3).float()
+                  generator = torch.Generator().manual_seed(7321)
+                  centers = points[torch.randperm(len(points), generator=generator)[:64]].clone()
+                  inputs = [points, centers]
+                  def make_kmeans(cls):
+                      def run():
+                          torch.manual_seed(981)
+                          model = cls(64, centers, tolerance=None, max_iterations=3)
+                          model.fit(points)
+                          return model
+                      return run
+                  workloads.append(("loftr_rgb_273076x3_k64_three_updates", {v: make_kmeans(f) for v, f in implementations.items()},
+                                    {"shape": list(points.shape), "clusters": 64, "max_iterations": 3, "tolerance": None,
+                                     "centers_seed": 7321, "call_seed": 981, "dtype": "float32", "range": [0, 255],
+                                     "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest()}))
+              else:
+                  image = torch.from_numpy(image_array).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+                  noise = torch.randn(image.shape, generator=torch.Generator().manual_seed(731)) * 0.03
+                  noisy_image = (image + noise).clamp(0, 1)
+                  for separate in (True, False):
+                      for backward in (False, True):
+                          guidance = image.clone().requires_grad_(backward)
+                          input_image = noisy_image.clone().requires_grad_(backward) if separate else guidance
+                          epsilon = torch.tensor([0.01], requires_grad=backward)
+                          leaves = (guidance, input_image, epsilon) if separate else (guidance, epsilon)
+                          inputs.extend(leaves)
+                          def make_guided(fn, guidance=guidance, input_image=input_image, epsilon=epsilon, leaves=leaves, backward=backward):
+                              def run():
+                                  with torch.set_grad_enabled(backward):
+                                      output = fn(guidance, input_image, (3, 3), epsilon, separable=False, subsample=1)
+                                      if backward:
+                                          gradients = torch.autograd.grad(output.square().mean(), leaves)
+                                          return (output, *gradients)
+                                      return output
+                              return run
+                          label = ("separate" if separate else "self") + ("_forward_backward" if backward else "_no_grad")
+                          workloads.append((label, {v: make_guided(f) for v, f in implementations.items()},
+                                            {"shape": list(image.shape), "dtype": "float32", "kernel_size": [3, 3], "eps": 0.01,
+                                             "separable": False, "subsample": 1, "backward": backward, "self_guidance": not separate,
+                                             "noise_seed": 731 if separate else None, "noise_std": 0.03 if separate else None,
+                                             "image_sha256": hashlib.sha256(image_path.read_bytes()).hexdigest()}))
+
+          initial_inputs = [digest(t) for t in inputs]
+          result = {"metadata": common.run_metadata(torch.device("cpu")), "pr": args.pr, "base": base, "head": head,
+                    "python_executable": sys.executable, "kornia_import": kornia.__file__, "branch_module": str(branch_source),
+                    "source_path": relative_source, "base_blob": git("rev-parse", f"{base}:{relative_source}"),
+                    "branch_blob": git("rev-parse", f"{head}:{relative_source}"), "source_sha256": {"base": hashlib.sha256(Path(base_module.__file__).read_bytes()).hexdigest(), "branch": hashlib.sha256(branch_source.read_bytes()).hexdigest()},
+                    "only_changed_library_path": changed_library_paths, "shared_dependencies_verified_identical": True,
+                    "timing_method": "Original exact-revision public API objects loaded side by side; unchanged dependencies shared. benchmarks.common.time_us, AB/BA rounds, one process, one intra-op and inter-op thread.",
+                    "rounds_requested": args.rounds, "min_run_time_seconds": args.min_run_time, "results": []}
+          result["cpu_affinity"] = sorted(os.sched_getaffinity(0))
+          result["original_cpu_affinity"] = original_affinity
+          result["pin_cpu"] = args.pin_cpu
+          out_path = scratch / f"geometry-kornia-{args.pr}-interleaved.json"
+          def save_results():
+              metadata = dict(result["metadata"])
+              metadata.update({key: value for key, value in result.items() if key not in ("metadata", "results")})
+              common.save_json(out_path, metadata, result["results"])
+
+          print(json.dumps({"metadata": result["metadata"], "pr": args.pr, "python": sys.executable, "kornia": kornia.__file__, "base_blob": result["base_blob"], "branch_blob": result["branch_blob"]}), flush=True)
+          common.warm_up_cpu()
+
+          for label, functions, workload in workloads:
+              controls = {variant: fingerprint(fn()) for variant, fn in functions.items()}
+              assert controls["base"] == controls["branch"], (label, controls)
+              row = {"workload": label, "parameters": workload, "output_control": controls, "rounds": []}
+              result["results"].append(row)
+              gc.collect()
+              for round_index in range(args.rounds):
+                  order = ["base", "branch"] if round_index % 2 == 0 else ["branch", "base"]
+                  timings = {}
+                  for variant in order:
+                      median_us, iqr_us = common.time_us(functions[variant], min_run_time=args.min_run_time)
+                      assert np.isfinite(median_us) and np.isfinite(iqr_us), (label, variant, median_us, iqr_us)
+                      timings[variant] = {"median_us": median_us, "iqr_us": iqr_us}
+                  row["rounds"].append({"round": round_index + 1, "order": order, **timings})
+                  save_results()
+                  print(json.dumps({"pr": args.pr, "workload": label, "round": round_index + 1, **timings}), flush=True)
+              row["summary"] = {}
+              for variant in ("base", "branch"):
+                  medians = np.array([r[variant]["median_us"] for r in row["rounds"]])
+                  q1, q3 = np.percentile(medians, [25, 75])
+                  row["summary"][variant] = {"median_us": float(np.median(medians)), "q1_us": float(q1), "q3_us": float(q3), "iqr_us": float(q3 - q1),
+                                             "median_within_round_iqr_us": float(np.median([r[variant]["iqr_us"] for r in row["rounds"]]))}
+              ratios = [r["branch"]["median_us"] / r["base"]["median_us"] for r in row["rounds"]]
+              row["summary"]["paired_ratio_median"] = float(np.median(ratios))
+              row["summary"]["paired_ratio_q1_q3"] = [float(q) for q in np.percentile(ratios, [25, 75])]
+              row["post_timing_control"] = {variant: fingerprint(fn()) for variant, fn in functions.items()}
+              assert row["post_timing_control"]["base"] == row["post_timing_control"]["branch"] == controls["base"]
+              assert [digest(t) for t in inputs] == initial_inputs
+              save_results()
+          result["completed_at"] = datetime.now(timezone.utc).isoformat()
+          result["input_hashes_unchanged"] = True
+          save_results()
+          print(json.dumps({"complete": args.pr, "summaries": [{"workload": r["workload"], **r["summary"]} for r in result["results"]]}), flush=True)
+          PYCODE
+      - name: Run 20 same-process alternating timing rounds on the memory workloads
+        shell: bash
+        run: |
+          .venv/bin/python -u - --pr '${{ matrix.pr }}' --rounds 20 --min-run-time 3 --pin-cpu < "$KORNIA_BENCH_OUTPUT_DIR/benchmark.py" 2>&1 | tee "$KORNIA_BENCH_OUTPUT_DIR/timing.log"
+          git diff --exit-code
+      - name: Upload full timing measurements and exact source snapshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: review-timing-${{ matrix.pr }}
+          path: ${{ runner.temp }}/review-timing-${{ matrix.pr }}/
+          if-no-files-found: warn
+          retention-days: 30
