@@ -17,7 +17,6 @@ jobs:
     env:
       HF_HUB_DISABLE_IMPLICIT_TOKEN: '1'
       HF_HUB_DISABLE_TELEMETRY: '1'
-      HF_HOME: ${{ runner.temp }}/sdxl-validation-hub
       PYTHONUNBUFFERED: '1'
       OMP_NUM_THREADS: '4'
       MKL_NUM_THREADS: '4'
@@ -35,6 +34,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p validation-results
+          echo "HF_HOME=$RUNNER_TEMP/sdxl-validation-hub" >> "$GITHUB_ENV"
           free -b > validation-results/memory-before.txt
           df -B1 . > validation-results/disk-before.txt
           lscpu > validation-results/cpu.txt
