@@ -1,0 +1,227 @@
+name: Validate spatial expectation marginals
+on:
+  create:
+  push:
+    branches:
+      - validation-expectation-marginals-20261119
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-expectation-marginals-20261119
+  cancel-in-progress: true
+jobs:
+  validate:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-expectation-marginals-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      KORNIA_TEST_RUNSLOW: "false"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      ONEDNN_MAX_CPU_ISA: AVX512_CORE_BF16
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: eef2317f78124e47a537301b37ef9cb6630b7cf4
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only test environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+          .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
+      - name: Prepare public API benchmark
+        shell: bash
+        run: |
+          cat > validation-results/probe.py <<'PYCODE'
+          import gc
+          import hashlib
+          import importlib.util
+          import json
+          import math
+          import os
+          import sys
+          import tempfile
+          from pathlib import Path
+          
+          import numpy as np
+          import torch
+          
+          import kornia
+          from benchmarks.common import run_metadata, time_us, warm_up_cpu
+          from kornia.geometry.subpix import spatial_expectation2d, spatial_soft_argmax2d
+          
+          assert Path(kornia.__file__).resolve().is_relative_to(Path.cwd().resolve())
+          torch.set_num_threads(1)
+          cpu = min(os.sched_getaffinity(0))
+          os.sched_setaffinity(0, {cpu})
+          warm_up_cpu()
+          spec = importlib.util.spec_from_file_location("baseline_dsnt", "validation-results/dsnt-base.py")
+          baseline = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(baseline)
+          label = sys.argv[1]
+          cases = [
+              ((2, 3, 8, 8), torch.float32, True, False),
+              ((4, 8, 32, 32), torch.float32, True, False),
+              ((16, 68, 64, 64), torch.float32, True, False),
+              ((2, 32, 256, 256), torch.float32, False, False),
+              ((4, 17, 128, 128), torch.float64, False, False),
+              ((4, 17, 64, 96), torch.float32, True, True),
+              ((2, 16, 1, 2048), torch.float32, False, False),
+              ((4, 17, 64, 64), torch.float16, True, False),
+          ]
+          records = []
+          for case_id, (shape, dtype, normalized, transposed) in enumerate(cases):
+              for api in ("expectation", "soft_argmax"):
+                  generator = torch.Generator().manual_seed(71)
+                  data = torch.randn(shape, dtype=dtype, generator=generator)
+                  if api == "expectation":
+                      data = torch.softmax(data.flatten(-2), -1).reshape(shape)
+                  if transposed:
+                      data = data.transpose(-1, -2)
+                  data.requires_grad_()
+                  target = data.new_tensor([0.2, -0.4])
+                  operation = spatial_expectation2d if api == "expectation" else spatial_soft_argmax2d
+          
+                  def call(x):
+                      return operation(x, normalized_coordinates=normalized)
+          
+                  def forward():
+                      with torch.no_grad():
+                          return call(data)
+          
+                  def forward_backward():
+                      data.grad = None
+                      result = call(data)
+                      (result - target).square().mean().backward()
+                      return result.detach()
+          
+                  output = forward_backward()
+                  ref_data = data.detach().clone().requires_grad_()
+                  ref_probs = baseline.spatial_softmax2d(ref_data) if api == "soft_argmax" else ref_data
+                  reference = baseline.spatial_expectation2d(ref_probs, normalized)
+                  (reference - target).square().mean().backward()
+                  tol = 1e-10 if dtype == torch.float64 else 1e-5
+                  torch.testing.assert_close(output, reference, rtol=tol, atol=tol)
+                  torch.testing.assert_close(data.grad, ref_data.grad, rtol=tol, atol=tol)
+                  row = {
+                      "case": case_id,
+                      "api": api,
+                      "shape": list(data.shape),
+                      "dtype": str(dtype),
+                      "normalized": normalized,
+                      "transposed": transposed,
+                      "output_sha256": hashlib.sha256(output.numpy().tobytes()).hexdigest(),
+                      "output_max_absolute_error": (output - reference).abs().max().item(),
+                      "gradient_max_absolute_error": (data.grad - ref_data.grad).abs().max().item(),
+                  }
+                  if label.endswith("-0"):
+                      np.savez_compressed(f"validation-results/{label}-{api}-{case_id}.npz", output=output.numpy())
+                  del output, reference, ref_probs, ref_data
+                  for name, fn in (("forward", forward), ("forward_backward", forward_backward)):
+                      median, iqr = time_us(fn, min_run_time=0.5)
+                      assert math.isfinite(median)
+                      row[name] = {"median_us": median, "iqr_us": iqr}
+                      data.grad = None
+                      gc.collect()
+                      with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
+                          result = fn()
+                      with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as trace:
+                          trace_path = trace.name
+                      profile.export_chrome_trace(trace_path)
+                      trace_data = json.loads(Path(trace_path).read_text())
+                      Path(trace_path).unlink()
+                      allocations = [e["args"] for e in trace_data["traceEvents"] if e.get("name") == "[memory]"]
+                      allocations = [e for e in allocations if "Total Allocated" in e and "Bytes" in e]
+                      assert allocations
+                      before = allocations[0]["Total Allocated"] - allocations[0]["Bytes"]
+                      row[name]["additional_peak_torch_bytes"] = max(e["Total Allocated"] for e in allocations) - before
+                      del result, profile
+                  records.append(row)
+                  del data, target
+          
+          source = Path(kornia.geometry.subpix.dsnt.__file__)
+          print(json.dumps({"metadata": run_metadata(torch.device("cpu")), "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                            "cpu": cpu, "python": sys.executable, "results": records}, indent=2))
+          PYCODE
+      - name: Demonstrate baseline storage failures
+        shell: bash
+        run: |
+          cp kornia/geometry/subpix/dsnt.py validation-results/dsnt-fixed.py
+          git show fc8612e6da704c928ca2253d905710f6d289457f:kornia/geometry/subpix/dsnt.py > validation-results/dsnt-base.py
+          cp validation-results/dsnt-base.py kornia/geometry/subpix/dsnt.py
+          set +e
+          pixi run test-module tests/geometry/subpix/test_dsnt.py --device=cpu --dtype=float32,float64 -k large_maps_use_marginal_storage --junitxml=validation-results/baseline.xml -q 2>&1 | tee validation-results/baseline.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          cp validation-results/dsnt-fixed.py kornia/geometry/subpix/dsnt.py
+          test "$test_status" -eq 1
+          .venv/bin/python -c 'import xml.etree.ElementTree as E; s=E.parse("validation-results/baseline.xml").getroot().find("testsuite"); assert int(s.attrib["tests"])==8 and int(s.attrib["failures"])==8 and int(s.attrib["errors"])==0, s.attrib'
+      - name: Run DSNT and spatial soft-argmax regressions
+        shell: bash
+        run: |
+          pixi run test-module tests/geometry/subpix/test_dsnt.py tests/geometry/subpix/test_spatial_softargmax.py --device=cpu --dtype=float32,float64,float16,bfloat16 -q -ra --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
+      - name: Compare public API forward and backward time and memory
+        shell: bash
+        run: |
+          for sample in 0 1 2 3 4; do
+            if (( sample % 2 == 0 )); then variants="base fixed"; else variants="fixed base"; fi
+            for variant in $variants; do
+              cp "validation-results/dsnt-$variant.py" kornia/geometry/subpix/dsnt.py
+              .venv/bin/python - "$variant-$sample" < validation-results/probe.py > "validation-results/$variant-$sample.json"
+            done
+          done
+          cp validation-results/dsnt-fixed.py kornia/geometry/subpix/dsnt.py
+          .venv/bin/python - <<'PYCODE'
+          import json, statistics
+          from pathlib import Path
+          import numpy as np
+          before=[json.load(open(f"validation-results/base-{i}.json")) for i in range(5)]
+          after=[json.load(open(f"validation-results/fixed-{i}.json")) for i in range(5)]
+          assert before[0]["source_sha256"] != after[0]["source_sha256"]
+          rows=[]
+          for index in range(16):
+              first=before[0]["results"][index]
+              case,api=first["case"],first["api"]
+              left=np.load(f"validation-results/base-0-{api}-{case}.npz")["output"]
+              right=np.load(f"validation-results/fixed-0-{api}-{case}.npz")["output"]
+              tol=1e-10 if first["dtype"]=="torch.float64" else 1e-5
+              np.testing.assert_allclose(left,right,rtol=tol,atol=tol)
+              row={k:first[k] for k in ("case","api","shape","dtype","normalized","transposed")}
+              row["maximum_output_difference"]=float(np.max(np.abs(left-right)))
+              row["maximum_gradient_difference"]=max(x["results"][index]["gradient_max_absolute_error"] for x in after)
+              for mode in ("forward","forward_backward"):
+                  row[mode]={}
+                  for label,records in (("base",before),("fixed",after)):
+                      values=[r["results"][index][mode] for r in records]
+                      row[mode][label]={"median_ms":statistics.median(v["median_us"] for v in values)/1000,"samples":values}
+              rows.append(row)
+          Path("validation-results/summary.json").write_text(json.dumps(rows,indent=2))
+          print(json.dumps(rows,indent=2))
+          PYCODE
+      - name: Run full pre-commit and type checks
+        shell: bash
+        run: |
+          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
+          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
+          git diff --exit-code
+      - name: Save validation logs and measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: expectation-marginals-eef2317
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
