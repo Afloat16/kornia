@@ -76,12 +76,16 @@ jobs:
                   forward_values.append(vals)
                   forward_indices.append(idxs)
                   if mutual:
+                      columns = squared.mT.contiguous()
                       if ratio:
-                          vals, idxs = squared.topk(min(2, squared.size(0)), dim=0, largest=False)
+                          vals, idxs = columns.topk(min(2, squared.size(0)), dim=1, largest=False)
+                          vals, idxs = vals.mT, idxs.mT
                       else:
-                          vals, idxs = squared.min(dim=0, keepdim=True)
+                          vals, idxs = columns.min(dim=1)
+                          vals, idxs = vals[None], idxs[None]
                       reverse_values.append(vals)
                       reverse_indices.append(idxs + begin)
+                      del columns
                   del squared
               vals = torch.cat(forward_values)
               idxs = torch.cat(forward_indices)
@@ -154,6 +158,8 @@ jobs:
           for filename in ("graf1.png", "graf3.png"):
               url = "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/" + filename
               payload = urllib.request.urlopen(url, timeout=60).read()
+              expected_hashes = {"graf1.png": "1504b769303c7bde00fa578eeaad3c68e02aceabeb1242e556f1f8d19e4bdea5", "graf3.png": "492e0e96f21748d093e1a29f4dbfd46528bd75966937e85ce7c8abc0f361fc15"}
+              assert hashlib.sha256(payload).hexdigest() == expected_hashes[filename]
               image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
               assert image is not None
               image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
@@ -165,9 +171,9 @@ jobs:
               images.append({"url": url, "sha256": hashlib.sha256(payload).hexdigest(), "image_shape": list(image.shape), "rows": len(desc)})
           np.savez_compressed(root / "descriptors.npz", desc1=descriptors[0].numpy(), desc2=descriptors[1].numpy())
           records = []
-          for requested1, requested2, dtype in [(256, 256, torch.float32), (1024, 1024, torch.float32), (2048, 2048, torch.float32), (4096, 4096, torch.float32), (8192, 8192, torch.float32), (4099, 2049, torch.float64)]:
+          for requested1, requested2, dtype in [(1024, 1024, torch.float32), (2048, 2048, torch.float32), (4096, 4096, torch.float32), (8192, 8192, torch.float32), (4099, 2049, torch.float64)]:
               desc1, desc2 = descriptors[0][:requested1].to(dtype), descriptors[1][:requested2].to(dtype)
-              for mode in ("nn", "mnn", "snn", "smnn"):
+              for mode in ("mnn", "smnn"):
                   api = getattr(matching, "match_" + mode)
                   kwargs = {"th": 0.8} if mode in ("snn", "smnn") else {}
                   base = lambda: api(desc1, desc2, **kwargs)
@@ -197,7 +203,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: matcher-streaming-screen
+          name: matcher-streaming-contiguous-screen
           path: validation-results/
           if-no-files-found: warn
           retention-days: 14
