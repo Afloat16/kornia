@@ -1,0 +1,267 @@
+name: Compare real SDXL latent scale outputs
+on:
+  create:
+  push:
+    branches: [validation-sdxl-scale-real-output-20261119]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-sdxl-scale-real-output-20261119
+  cancel-in-progress: true
+jobs:
+  compare:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-sdxl-scale-real-output-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HUB_DISABLE_IMPLICIT_TOKEN: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      HF_HOME: ${{ runner.temp }}/sdxl-validation-hub
+      PYTHONUNBUFFERED: '1'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: f7b960a7f60e489894861ccd1f373f8d1f7f4f01
+          fetch-depth: 10
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Record runner resources before installing dependencies
+        shell: bash
+        run: |
+          mkdir -p validation-results
+          free -b > validation-results/memory-before.txt
+          df -B1 . > validation-results/disk-before.txt
+          lscpu > validation-results/cpu.txt
+      - name: Install CPU-only inference dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          .venv/bin/python -m pip install --no-cache-dir -e . diffusers==0.43.0 transformers==5.23.0 accelerate==1.16.0 pillow
+          .venv/bin/python -m pip freeze > validation-results/packages.txt
+      - name: Check resources and compare the actual full SDXL one-step outputs
+        shell: bash
+        run: |
+          cat > validation-results/review-sdxl-real-output.py <<'PYCODE'
+          """Compare PR 6834 with its base through the real public SDXL dissolving model."""
+          
+          import gc
+          import hashlib
+          import importlib.metadata
+          import importlib.util
+          import io
+          import json
+          import os
+          import platform
+          import resource
+          import shutil
+          import subprocess
+          import sys
+          import time
+          import types
+          import urllib.request
+          from pathlib import Path
+          
+          import numpy as np
+          import torch
+          from huggingface_hub import HfApi, hf_hub_download
+          from PIL import Image
+          
+          import kornia
+          from kornia.filters.dissolving import StableDiffusionDissolving
+          
+          
+          ROOT = Path("validation-results")
+          ROOT.mkdir(exist_ok=True)
+          MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
+          REVISION = "462165984030d82259a11f4367a4eed129e94a7b"
+          CODE_BASE = "9a311912c0579ed010face500a26dca5360453b0"
+          CODE_FIXED = "f7b960a7f60e489894861ccd1f373f8d1f7f4f01"
+          DATA_COMMIT = "6a9eb63868f74ed106145881a982075b5d25f5b2"
+          IMAGE_BLOB = "88e8a50a6c6cb21de5b47f5c984ad58a8b0af153"
+          GIB = 1024**3
+          
+          
+          def available_memory():
+              values = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
+              available = int(values["MemAvailable"].split()[0]) * 1024
+              cgroup_max = Path("/sys/fs/cgroup/memory.max")
+              cgroup_current = Path("/sys/fs/cgroup/memory.current")
+              if cgroup_max.exists() and cgroup_max.read_text().strip() != "max":
+                  available = min(available, int(cgroup_max.read_text()) - int(cgroup_current.read_text()))
+              return available
+          
+          
+          report = {
+              "status": "preflight",
+              "model": MODEL,
+              "model_revision": REVISION,
+              "weight_variant": "fp16 safetensors, loaded and evaluated in float32",
+              "base_code": CODE_BASE,
+              "fixed_code": CODE_FIXED,
+              "python": sys.version,
+              "platform": platform.platform(),
+              "packages": {name: importlib.metadata.version(name) for name in
+                           ("torch", "kornia", "diffusers", "transformers", "accelerate", "huggingface_hub", "safetensors")},
+              "available_memory_bytes": available_memory(),
+              "free_disk_bytes": shutil.disk_usage(".").free,
+              "pid": os.getpid(),
+              "results": [],
+          }
+          
+          
+          def save():
+              (ROOT / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
+          
+          
+          def blocked(reason):
+              report.update(status="blocked", reason=reason)
+              save()
+              print(json.dumps(report, indent=2), flush=True)
+              raise SystemExit(2)
+          
+          
+          save()
+          print(json.dumps(report, indent=2), flush=True)
+          assert torch.version.cuda is None
+          assert Path(kornia.__file__).resolve() == Path("kornia/__init__.py").resolve()
+          assert subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == CODE_FIXED
+          torch.set_num_threads(min(4, len(os.sched_getaffinity(0))))
+          torch.set_grad_enabled(False)
+          
+          # No authentication, gated acceptance, implicit cached token, or remote custom model code is used.
+          info = HfApi(token=False).model_info(MODEL, revision=REVISION, files_metadata=True)
+          if info.private or info.gated:
+              blocked(f"The model is not anonymously public: private={info.private}, gated={info.gated!r}")
+          assert info.sha == REVISION
+          report["license"] = info.card_data.to_dict().get("license") if info.card_data else None
+          weight_files = [s for s in info.siblings if s.rfilename.endswith(".fp16.safetensors") and
+                          s.rfilename.split("/", 1)[0] in {"unet", "vae", "text_encoder", "text_encoder_2"}]
+          assert len(weight_files) == 4, [s.rfilename for s in weight_files]
+          weight_bytes = sum(s.size for s in weight_files)
+          report["checkpoint_files"] = [{"path": s.rfilename, "bytes": s.size, "blob_id": s.blob_id,
+                                         "lfs_sha256": s.lfs.sha256 if s.lfs else None} for s in weight_files]
+          report["fp16_download_bytes"] = weight_bytes
+          # The fp16 source files are converted to fp32 once by low_cpu_mem_usage. Reserve additional
+          # capacity for the CPU framework and a 512x256 one-step activation graph (inference, no autograd).
+          required_memory = 2 * weight_bytes + 1024**3
+          required_disk = weight_bytes + 2 * GIB
+          report["required_memory_bytes"] = required_memory
+          report["required_disk_bytes"] = required_disk
+          save()
+          if report["available_memory_bytes"] < required_memory:
+              blocked("Available runner RAM is below fp32 model storage plus the 1 GiB inference allowance.")
+          if report["free_disk_bytes"] < required_disk:
+              blocked("Available runner disk is below the selected public checkpoint files plus 2 GiB allowance.")
+          
+          license_path = hf_hub_download(MODEL, "LICENSE.md", revision=REVISION, token=False)
+          shutil.copyfile(license_path, ROOT / "model-LICENSE.md")
+          url = f"https://raw.githubusercontent.com/kornia/data/{DATA_COMMIT}/panda.jpg"
+          payload = urllib.request.urlopen(url, timeout=60).read()
+          assert hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest() == IMAGE_BLOB
+          (ROOT / "panda-source.jpg").write_bytes(payload)
+          input_image = Image.open(io.BytesIO(payload)).convert("RGB").resize((512, 256), Image.Resampling.BILINEAR)
+          input_image.save(ROOT / "input.png")
+          image = torch.from_numpy(np.array(input_image).copy()).permute(2, 0, 1).unsqueeze(0).float() / 255
+          report["input"] = {"url": url, "git_blob": IMAGE_BLOB, "sha256": hashlib.sha256(payload).hexdigest(),
+                             "shape": list(image.shape), "resize": "PIL bilinear to width512 height256, matching the documentation panel size"}
+          
+          base_file = ROOT / "dissolving-base.py"
+          base_file.write_text(subprocess.check_output(["git", "show", f"{CODE_BASE}:kornia/filters/dissolving.py"], text=True))
+          spec = importlib.util.spec_from_file_location("dissolving_original_base", base_file)
+          base_module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(base_module)
+          report["source_sha256"] = {
+              "base": hashlib.sha256(base_file.read_bytes()).hexdigest(),
+              "fixed": hashlib.sha256(Path("kornia/filters/dissolving.py").read_bytes()).hexdigest(),
+          }
+          report["status"] = "loading_public_checkpoint"
+          save()
+          load_start = time.perf_counter()
+          model = StableDiffusionDissolving(
+              version="xl", revision=REVISION, variant="fp16", use_safetensors=True,
+              torch_dtype=torch.float32, low_cpu_mem_usage=True, token=False,
+          )
+          report["load_seconds"] = time.perf_counter() - load_start
+          pipeline = model._sdm_model
+          for component in (pipeline.vae, pipeline.unet, pipeline.text_encoder, pipeline.text_encoder_2):
+              assert next(component.parameters()).dtype == torch.float32
+              component.eval()
+          # The same attention slicing setting is used on both sides to keep the actual full-size UNet
+          # within the CPU runner's memory. The model, parameters, scheduler and prompt are never replaced.
+          pipeline.enable_attention_slicing("max")
+          pipeline.enable_vae_tiling()
+          wrapper = model.model
+          fixed_encode = wrapper.encode_tensor_to_latent
+          fixed_decode = wrapper.decode_tensor_to_latent
+          base_encode = types.MethodType(base_module._DissolvingWraper_HF.encode_tensor_to_latent, wrapper)
+          base_decode = types.MethodType(base_module._DissolvingWraper_HF.decode_tensor_to_latent, wrapper)
+          report["runtime"] = {"dtype": "float32", "device": "cpu", "threads": torch.get_num_threads(),
+                               "attention_slicing": "max", "vae_tiling": True, "prompt": "",
+                               "seed": 19, "num_ddim_steps": wrapper.num_ddim_steps,
+                               "configured_scaling_factor": pipeline.vae.config.scaling_factor,
+                               "old_scaling_factor": 0.18215}
+          assert wrapper.num_ddim_steps == 1000
+          report["status"] = "comparing_actual_one_step_outputs"
+          save()
+          
+          for step in (100, 500, 900):
+              outputs = {}
+              for label in ("base", "fixed"):
+                  wrapper.encode_tensor_to_latent = base_encode if label == "base" else fixed_encode
+                  wrapper.decode_tensor_to_latent = base_decode if label == "base" else fixed_decode
+                  # Each complete public forward includes text encoding, sampled VAE encoding, one real UNet
+                  # invocation, predict_start_from_noise, and VAE decoding. Only the two boundary methods differ.
+                  torch.manual_seed(19)
+                  gc.collect()
+                  start = time.perf_counter()
+                  output = model(image, step)
+                  seconds = time.perf_counter() - start
+                  assert output.shape == image.shape and output.dtype == torch.float32
+                  assert torch.isfinite(output).all()
+                  array = output[0].permute(1, 2, 0).contiguous().numpy().copy()
+                  np.save(ROOT / f"step-{step}-{label}.npy", array)
+                  Image.fromarray(np.round(array * 255).clip(0, 255).astype(np.uint8)).save(ROOT / f"step-{step}-{label}.png")
+                  outputs[label] = array
+                  print(json.dumps({"step": step, "label": label, "seconds": seconds,
+                                    "output_sha256": hashlib.sha256(array.tobytes()).hexdigest()}), flush=True)
+                  report["results"].append({"step": step, "label": label, "seconds": seconds,
+                                            "sha256": hashlib.sha256(array.tobytes()).hexdigest(),
+                                            "minimum": float(array.min()), "maximum": float(array.max()),
+                                            "mean": float(array.mean())})
+                  save()
+                  del output
+              difference = np.abs(outputs["fixed"] - outputs["base"])
+              Image.fromarray(np.round(np.minimum(difference * 4, 1) * 255).astype(np.uint8)).save(ROOT / f"step-{step}-abs-diff-x4.png")
+              report.setdefault("comparisons", []).append({
+                  "step": step, "mae": float(difference.mean(dtype=np.float64)),
+                  "max_absolute_error": float(difference.max()),
+                  "rmse": float(np.sqrt(np.square(difference.astype(np.float64)).mean())),
+                  "fraction_of_channels_changed": float(np.count_nonzero(difference) / difference.size),
+                  "difference_visualization": "absolute channel difference multiplied by 4 and clipped to [0,1]",
+              })
+              save()
+          wrapper.encode_tensor_to_latent, wrapper.decode_tensor_to_latent = fixed_encode, fixed_decode
+          report["status"] = "completed"
+          report["peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+          report["remaining_disk_bytes"] = shutil.disk_usage(".").free
+          save()
+          print(json.dumps(report, indent=2), flush=True)
+          PYCODE
+          cp kornia/filters/dissolving.py validation-results/dissolving-fixed.py
+          .venv/bin/python -c 'from pathlib import Path; exec(compile(Path("validation-results/review-sdxl-real-output.py").read_text(), "validation-results/review-sdxl-real-output.py", "exec"))' 2>&1 | tee validation-results/comparison.log
+          git diff --exit-code
+      - name: Save only source, measurements and comparison images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdxl-real-scale-comparison-f7b960a
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
