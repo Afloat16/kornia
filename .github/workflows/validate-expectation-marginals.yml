@@ -26,8 +26,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: Afloat16/kornia
-          ref: e6baf71d2eda0bf92153e986be40994c4b08fd30
-          fetch-depth: 4
+          ref: cd96118beeade76b78fca03a7349d8346ed835b2
+          fetch-depth: 5
           persist-credentials: false
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
@@ -84,6 +84,8 @@ jobs:
               ((4, 8, 32, 64), torch.float32, True, False),
               ((4, 8, 64, 64), torch.float32, True, False),
               ((2, 16, 2, 2048), torch.float32, False, False),
+              ((2, 16, 8, 512), torch.float32, False, False),
+              ((2, 16, 16, 256), torch.float32, False, False),
           ]
           records = []
           for case_id, (shape, dtype, normalized, transposed) in enumerate(cases):
@@ -195,7 +197,7 @@ jobs:
           after=[json.load(open(f"validation-results/fixed-{i}.json")) for i in range(5)]
           assert before[0]["source_sha256"] != after[0]["source_sha256"]
           rows=[]
-          for index in range(16):
+          for index in range(len(before[0]["results"])):
               first=before[0]["results"][index]
               case,api=first["case"],first["api"]
               left=np.load(f"validation-results/base-0-{api}-{case}.npz")["output"]
@@ -224,7 +226,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expectation-marginals-e6baf71
+          name: expectation-marginals-cd96118
           path: validation-results/
           if-no-files-found: warn
           retention-days: 14
+
