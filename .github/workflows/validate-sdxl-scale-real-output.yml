@@ -196,7 +196,7 @@ jobs:
           # The same attention slicing setting is used on both sides to keep the actual full-size UNet
           # within the CPU runner's memory. The model, parameters, scheduler and prompt are never replaced.
           pipeline.enable_attention_slicing("max")
-          pipeline.enable_vae_tiling()
+          pipeline.vae.enable_tiling()
           wrapper = model.model
           fixed_encode = wrapper.encode_tensor_to_latent
           fixed_decode = wrapper.decode_tensor_to_latent
