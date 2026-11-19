@@ -1,0 +1,208 @@
+name: Validate masked mutual-information alignment
+
+on:
+  create:
+  push:
+    branches:
+      - validation-mi-mask-alignment-20261119
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validation-mi-mask-alignment-20261119
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-mi-mask-alignment-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      KORNIA_TEST_RUNSLOW: "false"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      ONEDNN_MAX_CPU_ISA: AVX512_CORE_BF16
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: a9808abb8b5c0bd785bb866e7ecb71e0cca6a329
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only test environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+          .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
+      - name: Prepare benchmark and clean base checkout
+        shell: bash
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/kornia-mi-base" 9a311912c0579ed010face500a26dca5360453b0
+          cat > validation-results/probe.py <<'PYCODE'
+          import gc
+          import hashlib
+          import json
+          import math
+          import os
+          import tempfile
+          from pathlib import Path
+
+          import torch
+
+          import kornia
+          from benchmarks.common import run_metadata, time_us, warm_up_cpu
+          from kornia.losses.mutual_information import MILossFromRef2D, mutual_information_loss_2d
+
+          assert Path(kornia.__file__).resolve().is_relative_to(Path.cwd().resolve())
+          torch.set_num_threads(1)
+          torch.manual_seed(42)
+          cpu = min(os.sched_getaffinity(0))
+          os.sched_setaffinity(0, {cpu})
+          warm_up_cpu()
+
+
+          def digest(value):
+              return hashlib.sha256(value.detach().contiguous().numpy().tobytes()).hexdigest()
+
+
+          records = []
+          for batch, size in [(1, 128), (4, 256), (1, 512)]:
+              generator = torch.Generator().manual_seed(42)
+              reference = torch.rand(batch, size, size, generator=generator)
+              image = (0.7 * reference + 0.3 * torch.rand(batch, size, size, generator=generator)).requires_grad_()
+              for mask_kind in ("none", "full", "overlap", "sparse"):
+                  input_mask = target_mask = None
+                  if mask_kind != "none":
+                      input_mask = torch.zeros(size, size, dtype=torch.bool)
+                      target_mask = torch.zeros_like(input_mask)
+                      if mask_kind == "full":
+                          input_mask[:] = target_mask[:] = True
+                      elif mask_kind == "overlap":
+                          input_mask[:, : 3 * size // 4] = True
+                          target_mask[: 3 * size // 4, :] = True
+                      else:
+                          input_mask[size // 4 : size // 2, size // 4 : size // 2] = True
+                          target_mask[3 * size // 8 : 5 * size // 8, size // 4 : size // 2] = True
+                  module = MILossFromRef2D(reference, target_mask, num_bins=32)
+
+                  def from_reference():
+                      return module(image, input_mask)
+
+                  def forward_backward():
+                      image.grad = None
+                      loss = mutual_information_loss_2d(image, reference, input_mask, target_mask, num_bins=32)
+                      loss.sum().backward()
+                      return loss.detach()
+
+                  result = forward_backward()
+                  row = {
+                      "batch": batch,
+                      "size": size,
+                      "mask": mask_kind,
+                      "num_bins": 32,
+                      "loss_sha256": digest(result),
+                      "gradient_sha256": digest(image.grad),
+                  }
+                  del result
+                  for name, operation in (("from_ref_forward", from_reference), ("functional_forward_backward", forward_backward)):
+                      median, iqr = time_us(operation, min_run_time=0.15)
+                      assert math.isfinite(median)
+                      row[name] = {"median_us": median, "iqr_us": iqr}
+                  image.grad = None
+                  gc.collect()
+                  with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
+                      result = from_reference()
+                  events = profile.key_averages()
+                  row["profile_counts"] = {
+                      name: sum(event.count for event in events if event.key == name)
+                      for name in ("aten::_local_scalar_dense", "aten::nonzero", "aten::zeros", "aten::index_put_")
+                  }
+                  with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as trace:
+                      trace_path = trace.name
+                  profile.export_chrome_trace(trace_path)
+                  trace_data = json.loads(Path(trace_path).read_text())
+                  Path(trace_path).unlink()
+                  allocations = [event["args"] for event in trace_data["traceEvents"] if event.get("name") == "[memory]"]
+                  allocations = [event for event in allocations if "Total Allocated" in event and "Bytes" in event]
+                  if allocations:
+                      before = allocations[0]["Total Allocated"] - allocations[0]["Bytes"]
+                      row["additional_peak_torch_bytes"] = max(event["Total Allocated"] for event in allocations) - before
+                  row["memory_events"] = [[event["Bytes"], event["Total Allocated"]] for event in allocations]
+                  del result, profile
+                  records.append(row)
+
+          source = Path(kornia.losses.mutual_information.__file__)
+          print(json.dumps({
+              "metadata": run_metadata(torch.device("cpu")),
+              "kornia_module": str(Path(kornia.__file__).resolve()),
+              "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+              "cpu": cpu,
+              "results": records,
+          }, indent=2))
+          PYCODE
+      - name: Validate masked loss values and gradients
+        shell: bash
+        run: |
+          pixi run test-module tests/losses/test_mutual_information.py --device=cpu --dtype=float32,float64 -q -ra --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
+          pixi run test-module tests/losses/test_mutual_information.py --device=cpu --dtype=float16,bfloat16 -k 'asymmetric_masks or masked_gradcheck' -q -ra --junitxml=validation-results/half.xml 2>&1 | tee validation-results/half.log
+      - name: Compare public loss calls on clean base and branch checkouts
+        shell: bash
+        run: |
+          mi_python="$GITHUB_WORKSPACE/.venv/bin/python"
+          mi_probe="$GITHUB_WORKSPACE/validation-results/probe.py"
+          for sample in 0 1 2 3 4; do
+            if (( sample % 2 == 0 )); then variants="base fixed"; else variants="fixed base"; fi
+            for variant in $variants; do
+              if [[ "$variant" == "base" ]]; then mi_checkout="$RUNNER_TEMP/kornia-mi-base"; else mi_checkout="$GITHUB_WORKSPACE"; fi
+              (cd "$mi_checkout" && "$mi_python" - < "$mi_probe") > "validation-results/$variant-$sample.json"
+            done
+          done
+          .venv/bin/python - <<'PYCODE'
+          import json, statistics
+          before=[json.load(open(f"validation-results/base-{i}.json")) for i in range(5)]
+          after=[json.load(open(f"validation-results/fixed-{i}.json")) for i in range(5)]
+          assert before[0]["source_sha256"] != after[0]["source_sha256"]
+          assert all(r["metadata"]["git_commit"].startswith("9a311912") and "dirty" not in r["metadata"]["git_commit"] for r in before)
+          assert all(r["metadata"]["git_commit"].startswith("a9808ab") and "dirty" not in r["metadata"]["git_commit"] for r in after)
+          summary=[]
+          for i in range(len(before[0]["results"])):
+              b=[r["results"][i] for r in before]
+              a=[r["results"][i] for r in after]
+              for field in ["loss_sha256","gradient_sha256"]:
+                  assert len({r[field] for r in b+a}) == 1,(i,field)
+              row={k:b[0][k] for k in ["batch","size","mask","num_bins","loss_sha256","gradient_sha256"]}
+              for label, records in [("before",b),("after",a)]:
+                  row[label]={mode:statistics.median(r[mode]["median_us"] for r in records) for mode in ["from_ref_forward","functional_forward_backward"]}
+                  row[label]["profile_counts"]=records[0]["profile_counts"]
+                  if "additional_peak_torch_bytes" in records[0]:
+                      row[label]["additional_peak_torch_bytes"]=statistics.median(r["additional_peak_torch_bytes"] for r in records)
+              summary.append(row)
+          json.dump(summary,open("validation-results/measurements.json","w"),indent=2)
+          print(json.dumps(summary,indent=2))
+          PYCODE
+      - name: Run full pre-commit and type checks
+        shell: bash
+        run: |
+          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
+          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
+          git diff --exit-code
+      - name: Save validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mi-mask-alignment-a9808ab
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
