@@ -1,0 +1,81 @@
+name: Validate SDXL precision patch
+
+on:
+  create:
+  push:
+    branches:
+      - validation-sdxl-precision-20261119
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validation-sdxl-precision-20261119
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-sdxl-precision-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      KORNIA_TEST_RUNSLOW: "false"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      ONEDNN_MAX_CPU_ISA: AVX512_CORE_BF16
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: bb798cd7519987e480f3ce3a29a95376f0eafd13
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only test environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+          .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
+      - name: Demonstrate baseline failure
+        shell: bash
+        run: |
+          cp kornia/filters/dissolving.py validation-results/dissolving-fixed.py
+          git show 9a311912c0579ed010face500a26dca5360453b0:kornia/filters/dissolving.py > kornia/filters/dissolving.py
+          set +e
+          pixi run test-module tests/filters/test_dissolving.py --device=cpu --dtype=float32,float64 -k sdxl-upcast --junitxml=validation-results/baseline.xml -q 2>&1 | tee validation-results/baseline.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          mv validation-results/dissolving-fixed.py kornia/filters/dissolving.py
+          test "$test_status" -eq 1
+          .venv/bin/python -c 'import xml.etree.ElementTree as E; r=E.parse("validation-results/baseline.xml").getroot(); s=r.find("testsuite"); assert int(s.attrib["tests"])==2 and int(s.attrib["failures"])==2 and int(s.attrib["errors"])==0, s.attrib'
+      - name: Run changed regression and callers
+        if: always() && success()
+        shell: bash
+        run: |
+          pixi run test-module tests/filters/test_dissolving.py --device=cpu --dtype=float32,float64,float16,bfloat16 -q -ra --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
+          pixi run test-module tests/augmentation/test_base.py tests/augmentation/test_augmentation.py tests/augmentation/test_conventions_intensity_values.py --device=cpu --dtype=float32,float64 -k Dissolving -q -ra 2>&1 | tee validation-results/callers.log
+      - name: Run full pre-commit and type checks
+        if: always() && success()
+        shell: bash
+        run: |
+          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
+          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
+          git diff --exit-code
+      - name: Save validation logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdxl-precision-bb798cd
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
