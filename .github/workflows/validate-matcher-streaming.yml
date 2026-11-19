@@ -1,4 +1,4 @@
-name: Screen bounded descriptor matching
+name: Validate chunked descriptor matching
 on:
   create:
   push:
@@ -14,34 +14,40 @@ jobs:
   validate:
     if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-matcher-streaming-20261119'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      KORNIA_TEST_RUNSLOW: "false"
       MKL_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
+      ONEDNN_MAX_CPU_ISA: AVX512_CORE_BF16
     steps:
       - uses: actions/checkout@v7
         with:
           repository: Afloat16/kornia
-          ref: 7ecfbb392285e03f73b4dd4cce62fc3fb8349c33
-          fetch-depth: 1
+          ref: a976cfffbca7c53a3a495bb180b7c388b2ea5219
+          fetch-depth: 3
           persist-credentials: false
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           pixi-version: v0.40.0
           cache: false
-      - name: Install CPU-only environment
+      - name: Install CPU-only test environment
         shell: bash
         run: |
           pixi run uv venv .venv
           pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
           pixi run uv pip install --python .venv/bin/python -e ".[dev]" opencv-python-headless==4.12.0.88
           mkdir -p validation-results
-          .venv/bin/python -c 'import sys,torch,kornia,cv2; print(sys.executable); print(kornia.__file__); print(torch.__version__,cv2.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
-      - name: Screen exact matching outputs and allocation with image descriptors
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+          .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
+      - name: Save exact comparison sources and prepare benchmark
         shell: bash
         run: |
-          cat > validation-results/probe.py <<'PYCODE'
+          git show 7ecfbb392285e03f73b4dd4cce62fc3fb8349c33:kornia/feature/matching.py > validation-results/matching-base.py
+          cp kornia/feature/matching.py validation-results/matching-fixed.py
+          cat > validation-results/prepare-inputs.py <<'PYCODE'
           import gc
           import hashlib
           import json
@@ -59,73 +65,45 @@ jobs:
           from kornia.feature import matching
           
           
-          def streaming_match(desc1, desc2, mode, threshold=0.8, block=512):
-              ratio = mode in ("snn", "smnn")
-              mutual = mode in ("mnn", "smnn")
-              norms1 = desc1.pow(2).sum(-1, keepdim=True)
-              norms2 = desc2.pow(2).sum(-1, keepdim=True)
-              padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
-              padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1).mT
-              forward_values, forward_indices, reverse_values, reverse_indices = [], [], [], []
-              for begin in range(0, len(desc1), block):
-                  squared = padded1[begin : begin + block].matmul(padded2)
-                  if ratio:
-                      vals, idxs = squared.topk(2, dim=1, largest=False)
-                  else:
-                      vals, idxs = squared.min(dim=1)
-                  forward_values.append(vals)
-                  forward_indices.append(idxs)
-                  if mutual:
-                      columns = squared.mT.contiguous()
-                      if ratio:
-                          vals, idxs = columns.topk(min(2, squared.size(0)), dim=1, largest=False)
-                          vals, idxs = vals.mT, idxs.mT
-                      else:
-                          vals, idxs = columns.min(dim=1)
-                          vals, idxs = vals[None], idxs[None]
-                      reverse_values.append(vals)
-                      reverse_indices.append(idxs + begin)
-                      del columns
-                  del squared
-              vals = torch.cat(forward_values)
-              idxs = torch.cat(forward_indices)
-              if ratio:
-                  distances = matching._distance_from_squared(vals)
-                  first_values, first_indices = distances[:, 0] / distances[:, 1], idxs[:, 0]
-              else:
-                  first_values, first_indices = matching._distance_from_squared(vals), idxs
-              if mutual:
-                  vals, idxs = torch.cat(reverse_values), torch.cat(reverse_indices)
-                  if ratio:
-                      best, picked = vals.topk(2, dim=0, largest=False)
-                      distances = matching._distance_from_squared(best)
-                      second_values = distances[0] / distances[1]
-                      second_indices = idxs.gather(0, picked[:1])[0]
-                  else:
-                      best, picked = vals.min(dim=0)
-                      second_values = matching._distance_from_squared(best)
-                      second_indices = idxs.gather(0, picked[None])[0]
-              if mode == "nn":
-                  indices = torch.stack([torch.arange(len(desc1)), first_indices], 1)
-                  return first_values[:, None], indices
-              if mode == "mnn":
-                  short = torch.arange(min(len(desc1), len(desc2)))
-                  if len(desc1) <= len(desc2):
-                      chosen = torch.nonzero(short == second_indices[first_indices][: len(short)])[:, 0]
-                      indices = torch.stack([chosen, first_indices[chosen]], 1)
-                      distances = first_values[chosen]
-                  else:
-                      chosen = torch.nonzero(short == first_indices[second_indices][: len(short)])[:, 0]
-                      indices = torch.stack([second_indices[chosen], chosen], 1)
-                      distances = second_values[chosen]
-                  return distances[:, None], indices
-              keep = first_values <= threshold
-              if mutual:
-                  backwards = second_values[first_indices]
-                  keep &= (backwards <= threshold) & (second_indices[first_indices] == torch.arange(len(desc1)))
-              chosen = torch.nonzero(keep)[:, 0]
-              distances = torch.maximum(first_values[chosen], backwards[chosen]) if mutual else first_values[chosen]
-              return distances[:, None], torch.stack([chosen, first_indices[chosen]], 1)
+          torch.set_num_threads(1)
+          cv2.setNumThreads(1)
+          cv2.setRNGSeed(41)
+          root = Path("validation-results")
+          images = []
+          descriptors = []
+          for filename in ("graf1.png", "graf3.png"):
+              url = "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/" + filename
+              payload = urllib.request.urlopen(url, timeout=60).read()
+              expected_hashes = {"graf1.png": "1504b769303c7bde00fa578eeaad3c68e02aceabeb1242e556f1f8d19e4bdea5", "graf3.png": "492e0e96f21748d093e1a29f4dbfd46528bd75966937e85ce7c8abc0f361fc15"}
+              assert hashlib.sha256(payload).hexdigest() == expected_hashes[filename]
+              image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+              assert image is not None
+              image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+              keypoints, desc = cv2.SIFT_create(nfeatures=8192, contrastThreshold=0.01).detectAndCompute(image, None)
+              order = np.argsort(-np.asarray([keypoint.response for keypoint in keypoints]), kind="stable")
+              desc = desc[order]
+              desc = np.sqrt(desc / desc.sum(1, keepdims=True))
+              descriptors.append(torch.from_numpy(desc))
+              images.append({"url": url, "sha256": hashlib.sha256(payload).hexdigest(), "image_shape": list(image.shape), "rows": len(desc)})
+          np.savez_compressed(root / "descriptors.npz", desc1=descriptors[0].numpy(), desc2=descriptors[1].numpy())
+          (root / "inputs.json").write_text(json.dumps({"images": images, "opencv": cv2.__version__}, indent=2)+"\n")
+          
+          PYCODE
+          cat > validation-results/benchmark-public.py <<'PYCODE'
+          import gc
+          import hashlib
+          import json
+          import os
+          import sys
+          import tempfile
+          from pathlib import Path
+          
+          import numpy as np
+          import torch
+          
+          import kornia
+          from benchmarks.common import run_metadata, time_us, warm_up_cpu
+          from kornia.feature import matching
           
           
           def peak_bytes(fn):
@@ -145,66 +123,230 @@ jobs:
               return peak
           
           
-          assert Path(kornia.__file__).resolve().is_relative_to(Path.cwd().resolve())
-          torch.set_num_threads(1)
-          cv2.setNumThreads(1)
-          cv2.setRNGSeed(41)
-          cpu = min(os.sched_getaffinity(0))
-          os.sched_setaffinity(0, {cpu})
-          warm_up_cpu()
           root = Path("validation-results")
-          images = []
-          descriptors = []
-          for filename in ("graf1.png", "graf3.png"):
-              url = "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/" + filename
-              payload = urllib.request.urlopen(url, timeout=60).read()
-              expected_hashes = {"graf1.png": "1504b769303c7bde00fa578eeaad3c68e02aceabeb1242e556f1f8d19e4bdea5", "graf3.png": "492e0e96f21748d093e1a29f4dbfd46528bd75966937e85ce7c8abc0f361fc15"}
-              assert hashlib.sha256(payload).hexdigest() == expected_hashes[filename]
-              image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-              assert image is not None
-              image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-              keypoints, desc = cv2.SIFT_create(nfeatures=8192, contrastThreshold=0.01).detectAndCompute(image, None)
-              order = np.argsort(-np.asarray([keypoint.response for keypoint in keypoints]), kind="stable")
-              desc = desc[order]
-              desc = np.sqrt(desc / desc.sum(1, keepdims=True))
-              descriptors.append(torch.from_numpy(desc))
-              images.append({"url": url, "sha256": hashlib.sha256(payload).hexdigest(), "image_shape": list(image.shape), "rows": len(desc)})
-          np.savez_compressed(root / "descriptors.npz", desc1=descriptors[0].numpy(), desc2=descriptors[1].numpy())
-          records = []
-          for requested1, requested2, dtype in [(1024, 1024, torch.float32), (2048, 2048, torch.float32), (4096, 4096, torch.float32), (8192, 8192, torch.float32), (4099, 2049, torch.float64)]:
-              desc1, desc2 = descriptors[0][:requested1].to(dtype), descriptors[1][:requested2].to(dtype)
-              for mode in ("mnn", "smnn"):
+          label, sample = sys.argv[1], int(sys.argv[2])
+          assert Path(kornia.__file__).resolve() == Path("kornia/__init__.py").resolve()
+          source = Path("kornia/feature/matching.py").read_bytes()
+          assert source == (root / f"matching-{'base' if label == 'base' else 'fixed'}.py").read_bytes()
+          inputs = np.load(root / "descriptors.npz")
+          available_cpus = sorted(os.sched_getaffinity(0))
+          cases = [
+              (256, 256, "float32", "plain", 1),
+              (1024, 1024, "float32", "plain", 1),
+              (2047, 2051, "float32", "plain", 1),
+              (2048, 2048, "float32", "plain", 1),
+              (4096, 4096, "float32", "plain", 1),
+              (8192, 8192, "float32", "plain", 1),
+              (4099, 2049, "float64", "plain", 1),
+              (2049, 4099, "float32", "noncontiguous", 1),
+              (8192, 2048, "float32", "plain", 1),
+              (2048, 8192, "float32", "plain", 1),
+              (1024, 1024, "float32", "provided_matrix", 1),
+              (256, 256, "bfloat16", "plain", 1),
+              (4096, 4096, "float32", "plain", 2),
+              (8192, 8192, "float32", "plain", 2),
+          ]
+          records, outputs = [], {}
+          previous_threads = None
+          for case_id, (rows, columns, dtype_name, layout, threads) in enumerate(cases):
+              assert len(available_cpus) >= threads
+              if previous_threads != threads:
+                  os.sched_setaffinity(0, set(available_cpus[:threads]))
+                  torch.set_num_threads(threads)
+                  warm_up_cpu()
+                  previous_threads = threads
+              dtype = getattr(torch, dtype_name)
+              descriptors = [torch.from_numpy(inputs[key][:count]).to(dtype) for key, count in (("desc1", rows), ("desc2", columns))]
+              if layout == "noncontiguous":
+                  for i, descriptor in enumerate(descriptors):
+                      storage = descriptor.new_empty((len(descriptor), descriptor.size(1) * 2))
+                      storage[:, ::2] = descriptor
+                      descriptors[i] = storage[:, ::2]
+              desc1, desc2 = descriptors
+              dm = torch.cdist(desc1, desc2) if layout == "provided_matrix" else None
+              for mode in ("nn", "mnn", "snn", "smnn"):
                   api = getattr(matching, "match_" + mode)
                   kwargs = {"th": 0.8} if mode in ("snn", "smnn") else {}
-                  base = lambda: api(desc1, desc2, **kwargs)
-                  changed = lambda: streaming_match(desc1, desc2, mode)
-                  expected, actual = base(), changed()
-                  torch.testing.assert_close(actual[1], expected[1], rtol=0, atol=0)
-                  torch.testing.assert_close(actual[0], expected[0], rtol=2e-5, atol=2e-7)
-                  row = {"mode": mode, "rows": [len(desc1), len(desc2)], "dimension": desc1.size(1), "dtype": str(dtype),
-                         "matches": len(actual[0]), "score_max_error": (actual[0] - expected[0]).abs().max().item() if actual[0].numel() else 0,
-                         "base_output_sha256": hashlib.sha256(expected[0].numpy().tobytes() + expected[1].numpy().tobytes()).hexdigest(),
-                         "fixed_output_sha256": hashlib.sha256(actual[0].numpy().tobytes() + actual[1].numpy().tobytes()).hexdigest()}
-                  del expected, actual
-                  row["base"], row["fixed"] = [], []
-                  for repeat in range(3):
-                      pairs = [("base", base), ("fixed", changed)] if repeat % 2 == 0 else [("fixed", changed), ("base", base)]
-                      for label, fn in pairs:
-                          median, iqr = time_us(fn, min_run_time=0.25)
-                          row[label].append({"median_us": median, "iqr_us": iqr})
-                  row["peak_base_bytes"], row["peak_fixed_bytes"] = peak_bytes(base), peak_bytes(changed)
+                  if dm is not None:
+                      kwargs["dm"] = dm
+                  fn = lambda: api(desc1, desc2, **kwargs)
+                  scores, indices = fn()
+                  score_array = scores.float().numpy() if scores.dtype == torch.bfloat16 else scores.numpy()
+                  indices_array = indices.numpy()
+                  key = f"{case_id}_{mode}"
+                  outputs[key + "_scores"] = score_array.copy()
+                  outputs[key + "_indices"] = indices_array.copy()
+                  row = {
+                      "case_id": case_id,
+                      "mode": mode,
+                      "rows": [rows, columns],
+                      "dimension": desc1.size(1),
+                      "dtype": dtype_name,
+                      "layout": layout,
+                      "threads": threads,
+                      "affinity": sorted(os.sched_getaffinity(0)),
+                      "matches": len(indices),
+                      "output_sha256": hashlib.sha256(score_array.tobytes() + indices_array.tobytes()).hexdigest(),
+                  }
+                  del scores, indices, score_array, indices_array
+                  row["median_us"], row["iqr_us"] = time_us(fn, min_run_time=0.5)
+                  if sample == 0:
+                      row["peak_bytes"] = peak_bytes(fn)
                   records.append(row)
-                  (root / "screen.json").write_text(json.dumps({"metadata": run_metadata(torch.device("cpu")), "cpu": cpu,
-                                                                 "images": images, "results": records}, indent=2) + "\n")
-                  print(mode, row["rows"], dtype, row["matches"], row["score_max_error"], flush=True)
+                  print(label, sample, key, rows, columns, dtype_name, layout, threads, row["median_us"], flush=True)
+                  (root / f"{label}-{sample}.json").write_text(json.dumps({
+                      "label": label,
+                      "sample": sample,
+                      "source_sha256": hashlib.sha256(source).hexdigest(),
+                      "metadata": run_metadata(torch.device("cpu")),
+                      "results": records,
+                  }, indent=2) + "\n")
+          np.savez_compressed(root / f"{label}-{sample}-outputs.npz", **outputs)
+          
           PYCODE
-          .venv/bin/python - < validation-results/probe.py | tee validation-results/probe.log
-      - name: Upload screening evidence
+          cat > validation-results/summarize-public.py <<'PYCODE'
+          import json
+          import statistics
+          from pathlib import Path
+          
+          import numpy as np
+          
+          root = Path("validation-results")
+          raw = {label: [json.loads((root / f"{label}-{sample}.json").read_text()) for sample in range(5)] for label in ("base", "fixed")}
+          outputs = {label: [np.load(root / f"{label}-{sample}-outputs.npz") for sample in range(5)] for label in ("base", "fixed")}
+          records = []
+          assert all(len(batch["results"]) == 56 for batches in raw.values() for batch in batches)
+          for index, row in enumerate(raw["base"][0]["results"]):
+              key = f"{row['case_id']}_{row['mode']}"
+              expected = outputs["base"][0]
+              errors = []
+              for label in ("base", "fixed"):
+                  for sample in range(5):
+                      actual = outputs[label][sample]
+                      np.testing.assert_array_equal(actual[key + "_indices"], expected[key + "_indices"])
+                      tolerance = 1e-12 if row["dtype"] == "float64" else 1e-5
+                      np.testing.assert_allclose(actual[key + "_scores"], expected[key + "_scores"], rtol=tolerance, atol=tolerance)
+                      errors.append(float(np.max(np.abs(actual[key + "_scores"] - expected[key + "_scores"]), initial=0)))
+              result = {key: value for key, value in row.items() if key not in ("median_us", "iqr_us", "peak_bytes", "output_sha256")}
+              for label in ("base", "fixed"):
+                  result[label + "_samples"] = [batch["results"][index] for batch in raw[label]]
+                  result[label + "_median_us"] = statistics.median(x["median_us"] for x in result[label + "_samples"])
+                  result[label + "_peak_bytes"] = result[label + "_samples"][0]["peak_bytes"]
+              result["max_score_error"] = max(errors)
+              result["time_change_percent"] = 100 * (result["fixed_median_us"] / result["base_median_us"] - 1)
+              result["peak_change_percent"] = 100 * (result["fixed_peak_bytes"] / result["base_peak_bytes"] - 1)
+              records.append(result)
+          (root / "summary.json").write_text(json.dumps({
+              "metadata": raw["fixed"][0]["metadata"],
+              "inputs": json.loads((root / "inputs.json").read_text()),
+              "baseline_source_sha256": raw["base"][0]["source_sha256"],
+              "changed_source_sha256": raw["fixed"][0]["source_sha256"],
+              "results": records,
+          }, indent=2) + "\n")
+          print("All 56 public API cases agree on complete match indices and scores across five fresh process pairs.")
+          
+          PYCODE
+      - name: Demonstrate baseline allocation regressions
+        shell: bash
+        run: |
+          trap 'cp validation-results/matching-fixed.py kornia/feature/matching.py' EXIT
+          cp validation-results/matching-base.py kornia/feature/matching.py
+          set +e
+          pixi run test-module tests/feature/test_matching.py -k avoids_full_distance_matrix --device=cpu --dtype=float32,float64 -q --junitxml=validation-results/baseline.xml 2>&1 | tee validation-results/baseline.log
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" -eq 1
+          .venv/bin/python -c 'import xml.etree.ElementTree as E; s=E.parse("validation-results/baseline.xml").getroot().find("testsuite"); assert int(s.attrib["failures"])==8 and int(s.attrib["errors"])==0, s.attrib'
+      - name: Run focused and complete matcher regressions
+        shell: bash
+        run: |
+          KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/feature/test_matching.py -k TestChunkedDistanceMatching --device=cpu --dtype=float32,float64 --timeout=600 -q --junitxml=validation-results/focused.xml 2>&1 | tee validation-results/focused.log
+          KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/feature/test_matching.py --device=cpu --dtype=float32,float64,float16,bfloat16 --timeout=600 -q --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
+      - name: Run full pre-commit and type checks
+        shell: bash
+        run: |
+          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
+          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
+          git diff --exit-code
+      - name: Measure public API timing, allocation and complete results
+        shell: bash
+        run: |
+          trap 'cp validation-results/matching-fixed.py kornia/feature/matching.py' EXIT
+          .venv/bin/python -c 'from pathlib import Path; exec(compile(Path("validation-results/prepare-inputs.py").read_text(), "validation-results/prepare-inputs.py", "exec"))'
+          for repeat in 0 1 2 3 4; do
+            if [ $((repeat % 2)) -eq 0 ]; then labels="base fixed"; else labels="fixed base"; fi
+            for label in $labels; do
+              cp "validation-results/matching-$label.py" kornia/feature/matching.py
+              .venv/bin/python -c 'from pathlib import Path; exec(compile(Path("validation-results/benchmark-public.py").read_text(), "validation-results/benchmark-public.py", "exec"))' "$label" "$repeat" | tee "validation-results/$label-$repeat.log"
+            done
+          done
+          cp validation-results/matching-fixed.py kornia/feature/matching.py
+          .venv/bin/python validation-results/summarize-public.py | tee validation-results/summary.log
+          git diff --exit-code
+      - name: Save validation evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: matcher-streaming-contiguous-screen
+          name: chunked-matching-a976cff
           path: validation-results/
           if-no-files-found: warn
           retention-days: 14
 
+  conformance:
+    name: ${{ matrix.kind }} compatibility
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-matcher-streaming-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [compile, onnx]
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      KIND: ${{ matrix.kind }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: a976cfffbca7c53a3a495bb180b7c388b2ea5219
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only compatibility environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+      - name: Check required packages and importers
+        shell: bash
+        run: |
+          cat > validation-results/changed-paths.txt <<'PATHS'
+          kornia/feature/matching.py
+          tests/feature/test_matching.py
+          PATHS
+          packages=$(.venv/bin/python .github/scripts/conformance_packages.py "$KIND" < validation-results/changed-paths.txt)
+          .venv/bin/python .github/scripts/conformance_packages.py "$KIND" < validation-results/changed-paths.txt > validation-results/packages.txt
+          if [ "$KIND" = "compile" ]; then
+            test_file=tests/test_inductor_conformance.py
+          else
+            test_file=tests/onnx/test_conformance.py
+          fi
+          pixi run test-module "$test_file" "--$KIND-conformance=$packages" --device=cpu --dtype=float32 --timeout=600 -q -ra --junitxml=validation-results/conformance.xml 2>&1 | tee validation-results/conformance.log
+          git diff --exit-code
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chunked-matching-${{ matrix.kind }}-a976cff
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
