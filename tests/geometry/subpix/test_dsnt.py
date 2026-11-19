@@ -308,11 +308,11 @@ class TestSpatialSoftmax2d(BaseTester):
 
 
 class TestSpatialExpectation2d(BaseTester):
-    @pytest.mark.applies_to(devices=("cpu",), dtypes=(torch.float32, torch.float64), reason="CPU reduction path")
+    @pytest.mark.applies_to(devices=("cpu",), dtypes=("float32", "float64"), reason="CPU reduction path")
     @pytest.mark.parametrize("normalized", [False, True])
     @pytest.mark.parametrize("transposed", [False, True])
     def test_large_maps_use_marginal_storage(self, device, dtype, normalized, transposed):
-        probabilities = torch.rand(2, 3, 96, 128, device=device, dtype=dtype)
+        probabilities = torch.rand(2, 3, 192, 128, device=device, dtype=dtype)
         probabilities /= probabilities.sum((-2, -1), keepdim=True)
         if transposed:
             probabilities = probabilities.transpose(-2, -1)
