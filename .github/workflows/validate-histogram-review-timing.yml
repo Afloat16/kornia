@@ -1,0 +1,164 @@
+name: Measure histogram matching review timing
+on:
+  create:
+  push:
+    branches: [validation-histogram-review-timing-20261119]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-histogram-review-timing-20261119
+  cancel-in-progress: true
+jobs:
+  benchmark:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-histogram-review-timing-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      UV_NO_SYNC: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: f0cf9530fd91e6dadd69c91972d281e92b751f4f
+          fetch-depth: 3
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only benchmark environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          .venv/bin/python -m pip install -e .
+          mkdir -p validation-results
+          .venv/bin/python -m pip freeze > validation-results/packages.txt
+          git show 9a311912c0579ed010face500a26dca5360453b0:kornia/contrib/histogram_matching.py > validation-results/histogram-base.py
+          cp kornia/contrib/histogram_matching.py validation-results/histogram-fixed.py
+      - name: Measure twenty alternating rounds in one process
+        shell: bash
+        run: |
+          cat > validation-results/benchmark-interleaved.py <<'PYCODE'
+          """Review-requested same-process timing of the exact public histogram workload."""
+          
+          import gc
+          import hashlib
+          import importlib.util
+          import json
+          import math
+          import os
+          import statistics
+          import weakref
+          from pathlib import Path
+          
+          import torch
+          from torch.utils._python_dispatch import TorchDispatchMode
+          from torch.utils._pytree import tree_leaves
+          
+          from benchmarks.common import run_metadata, time_us, warm_up_cpu
+          
+          
+          root = Path("validation-results")
+          torch.set_num_threads(1)
+          cpu = min(os.sched_getaffinity(0))
+          os.sched_setaffinity(0, {cpu})
+          generator = torch.Generator().manual_seed(42)
+          source = torch.rand(2048, 2048, generator=generator)
+          template = torch.rand(2048, 2048, generator=generator)
+          functions = {}
+          source_hashes = {}
+          for label in ("base", "fixed"):
+              path = root / f"histogram-{label}.py"
+              spec = importlib.util.spec_from_file_location(f"histogram_{label}", path)
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              functions[label] = module.histogram_matching
+              source_hashes[label] = hashlib.sha256(path.read_bytes()).hexdigest()
+          
+          
+          class LiveStorage(TorchDispatchMode):
+              def __init__(self, inputs):
+                  super().__init__()
+                  self.inputs = {t.untyped_storage()._cdata for t in inputs}
+                  self.live = {}
+                  self.peak = 0
+          
+              def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                  self.live = {key: value for key, value in self.live.items() if value[0]() is not None}
+                  result = func(*args, **(kwargs or {}))
+                  for value in tree_leaves(result):
+                      if isinstance(value, torch.Tensor):
+                          storage = value.untyped_storage()
+                          if storage._cdata not in self.inputs:
+                              self.live[storage._cdata] = (weakref.ref(storage), storage.nbytes())
+                  self.peak = max(self.peak, sum(size for ref, size in self.live.values() if ref() is not None))
+                  return result
+          
+          
+          memory = {}
+          for label, fn in functions.items():
+              with LiveStorage([source, template]) as tracker:
+                  output = fn(source, template)
+              memory[label] = {
+                  "peak_live_returned_tensor_bytes_excluding_inputs": tracker.peak,
+                  "output_sha256": hashlib.sha256(output.numpy().tobytes()).hexdigest(),
+              }
+              del output
+          assert memory["base"]["output_sha256"] == memory["fixed"]["output_sha256"]
+          expected_hash = memory["base"]["output_sha256"]
+          warm_up_cpu()
+          rounds = []
+          for repeat in range(20):
+              order = ("base", "fixed") if repeat % 2 == 0 else ("fixed", "base")
+              row = {"round": repeat, "order": order}
+              for label in order:
+                  fn = functions[label]
+                  gc.collect()
+                  median, iqr = time_us(lambda: fn(source, template), min_run_time=3.0)
+                  assert math.isfinite(median) and math.isfinite(iqr)
+                  # Output verification and tensor-lifetime instrumentation stay outside every timed region.
+                  output = fn(source, template)
+                  digest = hashlib.sha256(output.numpy().tobytes()).hexdigest()
+                  del output
+                  assert digest == expected_hash
+                  row[label] = {"median_us": median, "inner_iqr_us": iqr, "output_sha256": digest}
+              rounds.append(row)
+              (root / "rounds.json").write_text(json.dumps(rounds, indent=2) + "\n")
+              print(json.dumps(row), flush=True)
+          
+          
+          def distribution(values):
+              first, _, third = statistics.quantiles(values, n=4, method="inclusive")
+              return {"median": statistics.median(values), "iqr": third - first, "q1": first, "q3": third,
+                      "minimum": min(values), "maximum": max(values)}
+          
+          
+          summary = {
+              "base": "9a311912c0579ed010face500a26dca5360453b0",
+              "changed": "f0cf9530fd91e6dadd69c91972d281e92b751f4f",
+              "source_sha256": source_hashes,
+              "metadata": run_metadata(torch.device("cpu")),
+              "affinity_cpu": cpu,
+              "workload": {"shape": [2048, 2048], "dtype": "float32", "seed": 42, "rounds": 20,
+                           "measurement": "benchmarks.common.time_us, minimum 3 seconds per revision per round"},
+              "memory": memory,
+              "timings_us": {label: distribution([r[label]["median_us"] for r in rounds]) for label in functions},
+              "paired_change_percent": distribution([100 * (r["fixed"]["median_us"] / r["base"]["median_us"] - 1) for r in rounds]),
+              "rounds": rounds,
+          }
+          (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps({key: value for key, value in summary.items() if key != "rounds"}, indent=2))
+          PYCODE
+          .venv/bin/python -c 'from pathlib import Path; exec(compile(Path("validation-results/benchmark-interleaved.py").read_text(), "validation-results/benchmark-interleaved.py", "exec"))' 2>&1 | tee validation-results/benchmark.log
+          git diff --exit-code
+      - name: Save review evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: histogram-review-timing-f0cf953
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
