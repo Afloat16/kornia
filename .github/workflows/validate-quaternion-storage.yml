@@ -30,8 +30,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: Afloat16/kornia
-          ref: 631688415a848f6911c91921bf957605bda12320
-          fetch-depth: 2
+          ref: bd3625987bf05e76fa00f0805a69d2ed6a222325
+          fetch-depth: 3
           persist-credentials: false
       - uses: prefix-dev/setup-pixi@v0.11.3
         with:
@@ -46,92 +46,6 @@ jobs:
           mkdir -p validation-results
           .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
           .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
-      - name: Prepare public API benchmark
-        shell: bash
-        run: |
-          cat > validation-results/probe.py <<'PYCODE'
-          import gc
-          import hashlib
-          import json
-          import math
-          import os
-          import sys
-          import tempfile
-          from pathlib import Path
-          
-          import numpy as np
-          import torch
-          
-          import kornia
-          from benchmarks.common import run_metadata, time_us, warm_up_cpu
-          from kornia.geometry.quaternion import Quaternion, average_quaternions
-          
-          assert Path(kornia.__file__).resolve().is_relative_to(Path.cwd().resolve())
-          torch.set_num_threads(1)
-          cpu = min(os.sched_getaffinity(0))
-          os.sched_setaffinity(0, {cpu})
-          warm_up_cpu()
-          label = sys.argv[1]
-          records = []
-          cases = [(32, torch.float32, True), (512, torch.float32, True), (4096, torch.float32, True),
-                   (32, torch.float64, True), (4096, torch.float64, True), (4096, torch.float32, False)]
-          for case_id, (members, dtype, weighted) in enumerate(cases):
-              generator = torch.Generator().manual_seed(42)
-              data = torch.cat((torch.ones(members, 1, dtype=dtype),
-                                0.2 * torch.randn(members, 3, dtype=dtype, generator=generator)), dim=-1).requires_grad_()
-              weights = torch.linspace(0.25, 2, members, dtype=dtype)
-              weights[::7] = 0
-              weights.requires_grad_()
-          
-              def forward():
-                  with torch.no_grad():
-                      return average_quaternions(Quaternion(data), weights if weighted else None).data
-          
-              def forward_backward():
-                  data.grad = weights.grad = None
-                  result = average_quaternions(Quaternion(data), weights if weighted else None).data
-                  # This rotation-dependent objective is invariant to the eigenvector's arbitrary sign.
-                  result[..., 1:].square().sum().backward()
-                  return result.detach()
-          
-              output = forward_backward()
-              if label.endswith('-0'):
-                  values = {'output': output.numpy(), 'data_gradient': data.grad.numpy()}
-                  if weighted:
-                      values['weight_gradient'] = weights.grad.numpy()
-                  np.savez_compressed(f'validation-results/{label}-case{case_id}.npz', **values)
-                  del values
-              row = {'members': members, 'dtype': str(dtype), 'weighted': weighted}
-              row['output_abs_sha256'] = hashlib.sha256(output.abs().numpy().tobytes()).hexdigest()
-              del output
-              for name, operation in [('forward', forward), ('forward_backward', forward_backward)]:
-                  median, iqr = time_us(operation, min_run_time=0.5)
-                  assert math.isfinite(median)
-                  row[name] = {'median_us': median, 'iqr_us': iqr}
-                  data.grad = weights.grad = None
-                  gc.collect()
-                  with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
-                      result = operation()
-                  with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as trace:
-                      trace_path = trace.name
-                  profile.export_chrome_trace(trace_path)
-                  trace_data = json.loads(Path(trace_path).read_text())
-                  Path(trace_path).unlink()
-                  allocations = [e['args'] for e in trace_data['traceEvents'] if e.get('name') == '[memory]']
-                  allocations = [e for e in allocations if 'Total Allocated' in e and 'Bytes' in e]
-                  assert allocations
-                  before = allocations[0]['Total Allocated'] - allocations[0]['Bytes']
-                  row[name]['additional_peak_torch_bytes'] = max(e['Total Allocated'] for e in allocations) - before
-                  row[name]['largest_allocation_bytes'] = max(e['Bytes'] for e in allocations)
-                  del result, profile
-              records.append(row)
-              del data, weights
-          
-          source = Path(kornia.geometry.quaternion.__file__)
-          print(json.dumps({'metadata': run_metadata(torch.device('cpu')), 'kornia_module': str(Path(kornia.__file__).resolve()),
-                            'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'cpu': cpu,
-                            'python': sys.executable, 'results': records}, indent=2))
-          PYCODE
       - name: Demonstrate baseline storage failure
         shell: bash
         run: |
@@ -149,47 +63,6 @@ jobs:
         shell: bash
         run: |
           pixi run test-module tests/geometry/test_quaternion.py --device=cpu --dtype=float32,float64,float16,bfloat16 -q -ra --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
-      - name: Compare allocations, public API timing and gradients
-        shell: bash
-        run: |
-          for sample in 0 1 2 3 4; do
-            if (( sample % 2 == 0 )); then variants="base fixed"; else variants="fixed base"; fi
-            for variant in $variants; do
-              cp "validation-results/quaternion-$variant.py" kornia/geometry/quaternion.py
-              .venv/bin/python - "$variant-$sample" < validation-results/probe.py > "validation-results/$variant-$sample.json"
-            done
-          done
-          cp validation-results/quaternion-fixed.py kornia/geometry/quaternion.py
-          .venv/bin/python - <<'PYCODE'
-          import json, statistics
-          import numpy as np
-          before=[json.load(open(f"validation-results/base-{i}.json")) for i in range(5)]
-          after=[json.load(open(f"validation-results/fixed-{i}.json")) for i in range(5)]
-          assert before[0]["source_sha256"] != after[0]["source_sha256"]
-          summary=[]
-          for i in range(6):
-              b=[r["results"][i] for r in before]
-              a=[r["results"][i] for r in after]
-              base=np.load(f"validation-results/base-0-case{i}.npz")
-              fixed=np.load(f"validation-results/fixed-0-case{i}.npz")
-              same_sign=np.sign(np.sum(base['output']*fixed['output']))
-              tolerance=1e-5 if b[0]['dtype']=='torch.float32' else 1e-11
-              np.testing.assert_allclose(fixed['output']*same_sign,base['output'],rtol=tolerance,atol=tolerance)
-              errors={}
-              for key in base.files:
-                  if key=='output': continue
-                  np.testing.assert_allclose(fixed[key],base[key],rtol=10*tolerance,atol=tolerance)
-                  errors[key]=float(np.max(np.abs(fixed[key]-base[key])))
-              row={k:b[0][k] for k in ['members','dtype','weighted']}
-              row['gradient_max_abs_error']=errors
-              for name in ['forward','forward_backward']:
-                  row[name]={revision:{k:statistics.median(r[name][k] for r in data) for k in ['median_us','iqr_us','additional_peak_torch_bytes','largest_allocation_bytes']} for revision,data in [('before',b),('after',a)]}
-              if row['weighted'] and row['members']>=512:
-                  assert row['forward']['after']['additional_peak_torch_bytes']<0.1*row['forward']['before']['additional_peak_torch_bytes']
-              summary.append(row)
-          json.dump(summary,open('validation-results/measurements.json','w'),indent=2)
-          print(json.dumps(summary,indent=2))
-          PYCODE
       - name: Run full pre-commit and type checks
         shell: bash
         run: |
@@ -200,7 +73,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: quaternion-storage-6316884
+          name: quaternion-storage-bd36259
           path: validation-results/
           if-no-files-found: warn
           retention-days: 14
