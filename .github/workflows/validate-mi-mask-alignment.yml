@@ -1,4 +1,4 @@
-name: Validate masked mutual-information alignment
+name: Resolve masked MI timing variance
 
 on:
   create:
@@ -46,163 +46,137 @@ jobs:
           mkdir -p validation-results
           .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
           .venv/bin/python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0
-      - name: Prepare benchmark and clean base checkout
+      - name: Run long-lived paired checkout benchmarks
         shell: bash
         run: |
           git worktree add --detach "$RUNNER_TEMP/kornia-mi-base" 9a311912c0579ed010face500a26dca5360453b0
-          cat > validation-results/probe.py <<'PYCODE'
-          import gc
+          cat > validation-results/paired-child.py <<'PYCODE'
           import hashlib
           import json
-          import math
           import os
-          import tempfile
+          import sys
           from pathlib import Path
-
+          
           import torch
-
+          
           import kornia
           from benchmarks.common import run_metadata, time_us, warm_up_cpu
           from kornia.losses.mutual_information import MILossFromRef2D, mutual_information_loss_2d
-
+          
           assert Path(kornia.__file__).resolve().is_relative_to(Path.cwd().resolve())
           torch.set_num_threads(1)
-          torch.manual_seed(42)
           cpu = min(os.sched_getaffinity(0))
           os.sched_setaffinity(0, {cpu})
           warm_up_cpu()
-
-
-          def digest(value):
-              return hashlib.sha256(value.detach().contiguous().numpy().tobytes()).hexdigest()
-
-
-          records = []
-          for batch, size in [(1, 128), (4, 256), (1, 512)]:
+          source = Path(kornia.losses.mutual_information.__file__)
+          print(json.dumps({"ready": True, "metadata": run_metadata(torch.device("cpu")),
+                            "kornia_module": str(Path(kornia.__file__).resolve()),
+                            "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                            "python": sys.executable, "cpu": cpu}), flush=True)
+          
+          for line in sys.stdin:
+              case = json.loads(line)
+              batch, size, kind = case["batch"], case["size"], case["mask"]
               generator = torch.Generator().manual_seed(42)
               reference = torch.rand(batch, size, size, generator=generator)
               image = (0.7 * reference + 0.3 * torch.rand(batch, size, size, generator=generator)).requires_grad_()
-              for mask_kind in ("none", "full", "overlap", "sparse"):
-                  input_mask = target_mask = None
-                  if mask_kind != "none":
-                      input_mask = torch.zeros(size, size, dtype=torch.bool)
-                      target_mask = torch.zeros_like(input_mask)
-                      if mask_kind == "full":
-                          input_mask[:] = target_mask[:] = True
-                      elif mask_kind == "overlap":
-                          input_mask[:, : 3 * size // 4] = True
-                          target_mask[: 3 * size // 4, :] = True
-                      else:
-                          input_mask[size // 4 : size // 2, size // 4 : size // 2] = True
-                          target_mask[3 * size // 8 : 5 * size // 8, size // 4 : size // 2] = True
-                  module = MILossFromRef2D(reference, target_mask, num_bins=32)
-
-                  def from_reference():
-                      return module(image, input_mask)
-
-                  def forward_backward():
-                      image.grad = None
-                      loss = mutual_information_loss_2d(image, reference, input_mask, target_mask, num_bins=32)
-                      loss.sum().backward()
-                      return loss.detach()
-
-                  result = forward_backward()
-                  row = {
-                      "batch": batch,
-                      "size": size,
-                      "mask": mask_kind,
-                      "num_bins": 32,
-                      "loss_sha256": digest(result),
-                      "gradient_sha256": digest(image.grad),
-                  }
-                  del result
-                  for name, operation in (("from_ref_forward", from_reference), ("functional_forward_backward", forward_backward)):
-                      median, iqr = time_us(operation, min_run_time=0.15)
-                      assert math.isfinite(median)
-                      row[name] = {"median_us": median, "iqr_us": iqr}
+              input_mask = target_mask = None
+              if kind != "none":
+                  input_mask = torch.zeros(size, size, dtype=torch.bool)
+                  target_mask = torch.zeros_like(input_mask)
+                  if kind == "full":
+                      input_mask[:] = target_mask[:] = True
+                  elif kind == "overlap":
+                      input_mask[:, : 3 * size // 4] = True
+                      target_mask[: 3 * size // 4, :] = True
+                  else:
+                      input_mask[size // 4 : size // 2, size // 4 : size // 2] = True
+                      target_mask[3 * size // 8 : 5 * size // 8, size // 4 : size // 2] = True
+              module = MILossFromRef2D(reference, target_mask, num_bins=32)
+          
+              def from_reference():
+                  return module(image, input_mask)
+          
+              def forward_backward():
                   image.grad = None
-                  gc.collect()
-                  with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
-                      result = from_reference()
-                  events = profile.key_averages()
-                  row["profile_counts"] = {
-                      name: sum(event.count for event in events if event.key == name)
-                      for name in ("aten::_local_scalar_dense", "aten::nonzero", "aten::zeros", "aten::index_put_")
+                  loss = mutual_information_loss_2d(image, reference, input_mask, target_mask, num_bins=32)
+                  loss.sum().backward()
+                  return loss.detach()
+          
+              output = forward_backward()
+              row = dict(case)
+              row["loss_sha256"] = hashlib.sha256(output.numpy().tobytes()).hexdigest()
+              row["gradient_sha256"] = hashlib.sha256(image.grad.numpy().tobytes()).hexdigest()
+              for name, operation in (("from_ref_forward", from_reference), ("functional_forward_backward", forward_backward)):
+                  median, iqr = time_us(operation, min_run_time=2.0)
+                  row[name] = {"median_us": median, "iqr_us": iqr}
+              print(json.dumps(row), flush=True)
+              del module, image, reference, output
+          PYCODE
+          cat > validation-results/paired-probe.py <<'PYCODE'
+          import json
+          import os
+          import statistics
+          import subprocess
+          import sys
+          from pathlib import Path
+          
+          root = Path.cwd()
+          child_code = (root / "validation-results/paired-child.py").read_text()
+          checkouts = {"base": Path(os.environ["RUNNER_TEMP"]) / "kornia-mi-base", "fixed": root}
+          children = {}
+          metadata = {}
+          for variant, checkout in checkouts.items():
+              process = subprocess.Popen([sys.executable, "-u", "-c", child_code], cwd=checkout,
+                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+              children[variant] = process
+              metadata[variant] = json.loads(process.stdout.readline())
+              assert metadata[variant]["ready"]
+          assert metadata["base"]["metadata"]["git_commit"].startswith("9a31191")
+          assert metadata["fixed"]["metadata"]["git_commit"].startswith("a9808ab")
+          assert metadata["base"]["source_sha256"] != metadata["fixed"]["source_sha256"]
+          cases = [{"batch": b, "size": n, "mask": mask, "num_bins": 32}
+                   for b, n in [(1, 128), (4, 256), (1, 512)]
+                   for mask in ["none", "full", "overlap", "sparse"]]
+          records = []
+          for sample in range(5):
+              order = ["base", "fixed"] if sample % 2 == 0 else ["fixed", "base"]
+              for index in range(len(cases)):
+                  case = cases[(index + 3 * sample) % len(cases)]
+                  pair = {"sample": sample, "case": case, "order": order}
+                  for variant in order:
+                      process = children[variant]
+                      process.stdin.write(json.dumps(case) + "\n")
+                      process.stdin.flush()
+                      row = json.loads(process.stdout.readline())
+                      pair[variant] = row
+                  for key in ["loss_sha256", "gradient_sha256"]:
+                      assert pair["base"][key] == pair["fixed"][key], (case, key)
+                  records.append(pair)
+                  (root / "validation-results/paired-raw.json").write_text(json.dumps({"metadata": metadata, "pairs": records}, indent=2))
+          for process in children.values():
+              process.stdin.close()
+              assert process.wait() == 0
+          summary = []
+          for case in cases:
+              pairs = [pair for pair in records if pair["case"] == case]
+              row = dict(case)
+              for mode in ["from_ref_forward", "functional_forward_backward"]:
+                  row[mode] = {
+                      "base_us": statistics.median(pair["base"][mode]["median_us"] for pair in pairs),
+                      "fixed_us": statistics.median(pair["fixed"][mode]["median_us"] for pair in pairs),
+                      "paired_ratios": [pair["fixed"][mode]["median_us"] / pair["base"][mode]["median_us"] for pair in pairs],
                   }
-                  with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as trace:
-                      trace_path = trace.name
-                  profile.export_chrome_trace(trace_path)
-                  trace_data = json.loads(Path(trace_path).read_text())
-                  Path(trace_path).unlink()
-                  allocations = [event["args"] for event in trace_data["traceEvents"] if event.get("name") == "[memory]"]
-                  allocations = [event for event in allocations if "Total Allocated" in event and "Bytes" in event]
-                  if allocations:
-                      before = allocations[0]["Total Allocated"] - allocations[0]["Bytes"]
-                      row["additional_peak_torch_bytes"] = max(event["Total Allocated"] for event in allocations) - before
-                  row["memory_events"] = [[event["Bytes"], event["Total Allocated"]] for event in allocations]
-                  del result, profile
-                  records.append(row)
-
-          source = Path(kornia.losses.mutual_information.__file__)
-          print(json.dumps({
-              "metadata": run_metadata(torch.device("cpu")),
-              "kornia_module": str(Path(kornia.__file__).resolve()),
-              "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-              "cpu": cpu,
-              "results": records,
-          }, indent=2))
-          PYCODE
-      - name: Validate masked loss values and gradients
-        shell: bash
-        run: |
-          pixi run test-module tests/losses/test_mutual_information.py --device=cpu --dtype=float32,float64 -q -ra --junitxml=validation-results/changed.xml 2>&1 | tee validation-results/changed.log
-          pixi run test-module tests/losses/test_mutual_information.py --device=cpu --dtype=float16,bfloat16 -k 'asymmetric_masks or masked_gradcheck' -q -ra --junitxml=validation-results/half.xml 2>&1 | tee validation-results/half.log
-      - name: Compare public loss calls on clean base and branch checkouts
-        shell: bash
-        run: |
-          mi_python="$GITHUB_WORKSPACE/.venv/bin/python"
-          mi_probe="$GITHUB_WORKSPACE/validation-results/probe.py"
-          for sample in 0 1 2 3 4; do
-            if (( sample % 2 == 0 )); then variants="base fixed"; else variants="fixed base"; fi
-            for variant in $variants; do
-              if [[ "$variant" == "base" ]]; then mi_checkout="$RUNNER_TEMP/kornia-mi-base"; else mi_checkout="$GITHUB_WORKSPACE"; fi
-              (cd "$mi_checkout" && "$mi_python" - < "$mi_probe") > "validation-results/$variant-$sample.json"
-            done
-          done
-          .venv/bin/python - <<'PYCODE'
-          import json, statistics
-          before=[json.load(open(f"validation-results/base-{i}.json")) for i in range(5)]
-          after=[json.load(open(f"validation-results/fixed-{i}.json")) for i in range(5)]
-          assert before[0]["source_sha256"] != after[0]["source_sha256"]
-          assert all(r["metadata"]["git_commit"].startswith("9a31191") and "dirty" not in r["metadata"]["git_commit"] for r in before)
-          assert all(r["metadata"]["git_commit"].startswith("a9808ab") and "dirty" not in r["metadata"]["git_commit"] for r in after)
-          summary=[]
-          for i in range(len(before[0]["results"])):
-              b=[r["results"][i] for r in before]
-              a=[r["results"][i] for r in after]
-              for field in ["loss_sha256","gradient_sha256"]:
-                  assert len({r[field] for r in b+a}) == 1,(i,field)
-              row={k:b[0][k] for k in ["batch","size","mask","num_bins","loss_sha256","gradient_sha256"]}
-              for label, records in [("before",b),("after",a)]:
-                  row[label]={mode:statistics.median(r[mode]["median_us"] for r in records) for mode in ["from_ref_forward","functional_forward_backward"]}
-                  row[label]["profile_counts"]=records[0]["profile_counts"]
-                  if "additional_peak_torch_bytes" in records[0]:
-                      row[label]["additional_peak_torch_bytes"]=statistics.median(r["additional_peak_torch_bytes"] for r in records)
               summary.append(row)
-          json.dump(summary,open("validation-results/measurements.json","w"),indent=2)
-          print(json.dumps(summary,indent=2))
+          (root / "validation-results/paired-summary.json").write_text(json.dumps(summary, indent=2))
+          print(json.dumps(summary, indent=2))
           PYCODE
-      - name: Run full pre-commit and type checks
-        shell: bash
-        run: |
-          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
-          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
-          git diff --exit-code
+          .venv/bin/python validation-results/paired-probe.py
       - name: Save validation evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mi-mask-alignment-a9808ab
+          name: mi-mask-paired-a9808ab
           path: validation-results/
           if-no-files-found: warn
           retention-days: 14
