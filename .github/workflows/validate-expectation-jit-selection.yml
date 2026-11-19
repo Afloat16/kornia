@@ -1,0 +1,148 @@
+name: Validate spatial expectation JIT selection
+on:
+  create:
+  push:
+    branches: [validation-expectation-jit-selection-20261119]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validation-expectation-jit-selection-20261119
+  cancel-in-progress: true
+jobs:
+  validate:
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-expectation-jit-selection-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      KORNIA_TEST_RUNSLOW: "false"
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: 0829ef190d6db9b2909495fe4555fac3f0552c48
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only test environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+          git show f82702ec30681dc6e9d929e410aaa7baa3b83b08:kornia/geometry/subpix/dsnt.py > validation-results/prior-production.py
+          cmp validation-results/prior-production.py kornia/geometry/subpix/dsnt.py
+      - name: Reproduce the published JIT selection failure
+        shell: bash
+        run: |
+          cp tests/geometry/subpix/test_dsnt.py validation-results/fixed-test.py
+          trap 'cp validation-results/fixed-test.py tests/geometry/subpix/test_dsnt.py' EXIT
+          git show f82702ec30681dc6e9d929e410aaa7baa3b83b08:tests/geometry/subpix/test_dsnt.py > tests/geometry/subpix/test_dsnt.py
+          set +e
+          KORNIA_TEST_OPTIMIZER=jit pixi run test-module tests/geometry/subpix/test_dsnt.py -k marginal_selector_keeps_dynamic_shapes --device=cpu --dtype=float32 -q --junitxml=validation-results/jit-before.xml 2>&1 | tee validation-results/jit-before.log
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" -eq 1
+          .venv/bin/python -c 'import xml.etree.ElementTree as E; r=E.parse("validation-results/jit-before.xml").getroot(); s=r.find("testsuite"); assert int(s.attrib["failures"])==1 and int(s.attrib["errors"])==0 and int(s.attrib["tests"])==2, s.attrib; f=r.find(".//failure"); assert "TypeError" in f.text and "backend" in f.text'
+      - name: Verify precise optimizer selection and export coverage
+        shell: bash
+        run: |
+          for optimizer in jit eager inductor; do
+            KORNIA_TEST_OPTIMIZER="$optimizer" pixi run test-module tests/geometry/subpix/test_dsnt.py -k marginal_selector_keeps_dynamic_shapes --device=cpu --dtype=float32 -q "--junitxml=validation-results/selector-$optimizer.xml" 2>&1 | tee "validation-results/selector-$optimizer.log"
+          done
+          env -u KORNIA_TEST_OPTIMIZER pixi run test-module tests/geometry/subpix/test_dsnt.py -k marginal_selector_keeps_dynamic_shapes --device=cpu --dtype=float32 -q --junitxml=validation-results/selector-unset.xml 2>&1 | tee validation-results/selector-unset.log
+          .venv/bin/python - <<'PYCODE'
+          import xml.etree.ElementTree as E
+          for name, count in (("jit",1),("eager",2),("inductor",2),("unset",1)):
+              r=E.parse(f"validation-results/selector-{name}.xml").getroot()
+              cases=r.findall(".//testcase")
+              assert len(cases)==count, (name, len(cases))
+              assert all(c.find("failure") is None and c.find("error") is None and c.find("skipped") is None for c in cases)
+              assert any("export" in c.attrib["name"] for c in cases), name
+          PYCODE
+      - name: Run complete affected CPU modules
+        shell: bash
+        run: |
+          pixi run test-module tests/geometry/subpix/test_dsnt.py tests/geometry/subpix/test_spatial_softargmax.py --device=cpu --dtype=float32,float64,float16,bfloat16 --timeout=600 -q --junitxml=validation-results/regression.xml 2>&1 | tee validation-results/regression.log
+      - name: Run full pre-commit and type checks
+        shell: bash
+        run: |
+          pixi run pre-commit-all 2>&1 | tee validation-results/pre-commit.log
+          pixi run typecheck 2>&1 | tee validation-results/typecheck.log
+          git diff --exit-code
+      - name: Save review regression evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: expectation-jit-selection-0829ef1
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  conformance:
+    name: ${{ matrix.kind }} compatibility
+    if: github.repository == 'Afloat16/kornia' && github.ref == 'refs/heads/validation-expectation-jit-selection-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [compile, onnx]
+    env:
+      UV_NO_SYNC: "1"
+      KORNIA_TEST_DEVICE: cpu
+      MKL_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      KIND: ${{ matrix.kind }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Afloat16/kornia
+          ref: 0829ef190d6db9b2909495fe4555fac3f0552c48
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          cache: false
+      - name: Install CPU-only compatibility environment
+        shell: bash
+        run: |
+          pixi run uv venv .venv
+          pixi run uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch==2.15.0
+          pixi run uv pip install --python .venv/bin/python -e ".[dev]"
+          mkdir -p validation-results
+          .venv/bin/python -c 'import sys,torch,kornia; print(sys.executable); print(kornia.__file__); print(torch.__version__); assert torch.version.cuda is None' | tee validation-results/environment.log
+      - name: Check required packages and importers
+        shell: bash
+        run: |
+          cat > validation-results/changed-paths.txt <<'PATHS'
+          kornia/geometry/subpix/dsnt.py
+          tests/geometry/subpix/test_dsnt.py
+          PATHS
+          packages=$(.venv/bin/python .github/scripts/conformance_packages.py "$KIND" < validation-results/changed-paths.txt)
+          .venv/bin/python .github/scripts/conformance_packages.py "$KIND" < validation-results/changed-paths.txt > validation-results/packages.txt
+          if [ "$KIND" = "compile" ]; then
+            test_file=tests/test_inductor_conformance.py
+          else
+            test_file=tests/onnx/test_conformance.py
+          fi
+          pixi run test-module "$test_file" "--$KIND-conformance=$packages" --device=cpu --dtype=float32 --timeout=600 -q -ra --junitxml=validation-results/conformance.xml 2>&1 | tee validation-results/conformance.log
+          git diff --exit-code
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: expectation-jit-selection-${{ matrix.kind }}-0829ef1
+          path: validation-results/
+          if-no-files-found: warn
+          retention-days: 14
