@@ -350,8 +350,9 @@ class EntropyBasedLossBase(torch.nn.Module):
             KORNIA_CHECK(ref_signal.shape[-1] > 0, "mask intersection must select at least one sample.")
             other_signal = other_signal[..., other_mask]
             other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
-            other_signal = self.trace_in_ref_mask(other_signal, other_mask)
-            other_signal = other_signal[..., common_mask]
+            # Select the intersection in the other mask's compressed coordinates,
+            # without scattering the signal back into its full spatial extent.
+            other_signal = other_signal[..., self.mask[other_mask]]
 
         # Evaluate kernels and accumulate counts in float32 for half inputs. A half-precision histogram can
         # overflow before its probabilities are formed, even if every kernel weight is representable.

@@ -344,12 +344,36 @@ class TestMutualInformationLoss(BaseTester):
 
     @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
     @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.truncated_gaussian])
-    def test_masked_gradcheck(self, device, loss_fn, kernel):
+    @pytest.mark.parametrize("different_masks", [False, True])
+    def test_masked_gradcheck(self, device, loss_fn, kernel, different_masks):
         generator = torch.Generator().manual_seed(5548)
         signal = torch.rand((2, 8), generator=generator, dtype=torch.float64).to(device).requires_grad_()
         target = torch.rand((2, 8), generator=generator, dtype=torch.float64).to(device).requires_grad_()
         mask = torch.tensor([True, False, True, True, False, True, True, True], device=device)
-        self.gradcheck(lambda x, y: loss_fn(x, y, mask, mask, kernel, 4), (signal, target))
+        target_mask = mask.roll(1) if different_masks else mask
+        self.gradcheck(lambda x, y: loss_fn(x, y, mask, target_mask, kernel, 4), (signal, target))
+
+    @pytest.mark.parametrize("loss_fn", [mutual_information_loss, normalized_mutual_information_loss])
+    @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.truncated_gaussian])
+    def test_asymmetric_masks_select_matching_positions(self, device, dtype, loss_fn, kernel):
+        signal = torch.tensor(
+            [[0.0, 0.2, 0.8, 9.0, 0.25, -8.0, 0.4, 7.0, 1.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        target = torch.tensor(
+            [[0.0, 8.0, -7.0, 0.1, 0.75, 0.6, 9.0, 0.9, 1.0]], device=device, dtype=dtype, requires_grad=True
+        )
+        input_mask = torch.tensor([True, True, True, False, True, False, True, False, True], device=device)
+        target_mask = torch.tensor([True, False, False, True, True, True, False, True, True], device=device)
+        # Only positions 0, 4 and 8 coincide. Both masks retain the same extrema
+        # as those positions, so the compact reference has identical normalization.
+        positions = [0, 4, 8]
+        actual = loss_fn(signal, target, input_mask, target_mask, kernel, 4)
+        expected = loss_fn(signal[..., positions], target[..., positions], kernel_function=kernel, num_bins=4)
+        self.assert_close(actual, expected)
+        actual_grads = torch.autograd.grad(actual.sum(), (signal, target), retain_graph=True)
+        expected_grads = torch.autograd.grad(expected.sum(), (signal, target))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
 
 
 @pytest.mark.parametrize(
