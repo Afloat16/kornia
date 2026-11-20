@@ -1,0 +1,121 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "device": "cpu",
+    "git_commit": "7ecfbb3-dirty",
+    "kornia": "0.9.3.dev",
+    "kornia_module": "/workspace/scratch/c05378b96efa/kornia-aepe-round2/kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "machine": "x86_64",
+    "numpy": "2.3.5",
+    "opencv": null,
+    "opencv_num_threads": null,
+    "pillow": "13.0.0",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "poselib": null,
+    "python": "3.12.14",
+    "rayon_num_threads_requested": null,
+    "skimage": null,
+    "source_sha256": "3711c38dd28a4b8c27922c644505e9be50de3837ef409c7d93fc5eb7faa8a73e",
+    "timestamp_utc": "2026-11-20T06:27:47+00:00",
+    "torch": "2.15.0+cpu",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "gradients": false,
+      "iqr_us": 14.34124988008989,
+      "median_us": 25.753999580047093,
+      "shape": [
+        1,
+        8,
+        8,
+        2
+      ]
+    },
+    {
+      "gradients": true,
+      "iqr_us": 93.83649921801407,
+      "median_us": 165.89000006206334,
+      "shape": [
+        1,
+        8,
+        8,
+        2
+      ]
+    },
+    {
+      "gradients": false,
+      "iqr_us": 59.49289989075628,
+      "median_us": 524.1948500042781,
+      "shape": [
+        1,
+        512,
+        512,
+        2
+      ]
+    },
+    {
+      "gradients": true,
+      "iqr_us": 654.1815018863417,
+      "median_us": 5721.697001717985,
+      "shape": [
+        1,
+        512,
+        512,
+        2
+      ]
+    },
+    {
+      "gradients": false,
+      "iqr_us": 2512.201999707031,
+      "median_us": 12883.153001894243,
+      "shape": [
+        1,
+        1024,
+        1024,
+        2
+      ]
+    },
+    {
+      "gradients": true,
+      "iqr_us": 1299.8534975849907,
+      "median_us": 41574.52150138852,
+      "shape": [
+        1,
+        1024,
+        1024,
+        2
+      ]
+    },
+    {
+      "memory_profile": true,
+      "output_bytes": 1048576,
+      "peak_net_bytes": 3145728,
+      "positive_allocations": 6,
+      "positive_bytes": 6291456,
+      "retained_bytes": 1048576,
+      "shape": [
+        1,
+        512,
+        512,
+        2
+      ]
+    },
+    {
+      "memory_profile": true,
+      "output_bytes": 4194304,
+      "peak_net_bytes": 12582912,
+      "positive_allocations": 6,
+      "positive_bytes": 25165824,
+      "retained_bytes": 4194304,
+      "shape": [
+        1,
+        1024,
+        1024,
+        2
+      ]
+    }
+  ]
+}
