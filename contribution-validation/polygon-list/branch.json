@@ -1,0 +1,144 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "device": "cpu",
+    "git_commit": "7ecfbb3-dirty",
+    "image_dtype": "float32",
+    "image_shape": [
+      8,
+      1,
+      32,
+      32
+    ],
+    "kornia": "0.9.3.dev",
+    "kornia_file": "/workspace/scratch/c05378b96efa/kornia-polygon-dtypes-round2/kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "machine": "x86_64",
+    "numpy": "2.3.5",
+    "opencv": null,
+    "opencv_num_threads": null,
+    "pillow": "13.0.0",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "polygons": "alternate 4/5 vertices (4 for tensor control), deterministic rectangles",
+    "poselib": null,
+    "python": "3.12.14",
+    "rayon_num_threads_requested": null,
+    "skimage": null,
+    "source_sha256": "63308f7bb650d5fbc32ca5af6cbacec49182c92d767ef3ad9ae27d0ee403c637",
+    "sys_executable": "/workspace/scratch/c05378b96efa/kornia-polygon-dtypes-round2/../contrib-env/bin/python",
+    "timestamp_utc": "2026-11-20T09:21:26+00:00",
+    "torch": "2.15.0+cpu",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "case": "uniform_float32",
+      "filled_pixels_per_image": [
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0
+      ],
+      "iqr_us": 208.09174748137593,
+      "median_us": 329.1114990133792,
+      "output_sha256": "372981f83d7c2f721615918057fa001a0d9d486a20b6d566441a879d768a62f7",
+      "positive_allocations": 43,
+      "positive_bytes": 111448
+    },
+    {
+      "case": "uniform_float16",
+      "filled_pixels_per_image": [
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0
+      ],
+      "iqr_us": 29.67981250549199,
+      "median_us": 257.52564000868006,
+      "output_sha256": "372981f83d7c2f721615918057fa001a0d9d486a20b6d566441a879d768a62f7",
+      "positive_allocations": 43,
+      "positive_bytes": 111368
+    },
+    {
+      "case": "uniform_int64",
+      "filled_pixels_per_image": [
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0
+      ],
+      "iqr_us": 19.209960018997688,
+      "median_us": 274.9907900033577,
+      "output_sha256": "372981f83d7c2f721615918057fa001a0d9d486a20b6d566441a879d768a62f7",
+      "positive_allocations": 43,
+      "positive_bytes": 111608
+    },
+    {
+      "case": "uniform_float64",
+      "filled_pixels_per_image": [
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0
+      ],
+      "iqr_us": 20.011250007883056,
+      "median_us": 270.2666749974014,
+      "output_sha256": "372981f83d7c2f721615918057fa001a0d9d486a20b6d566441a879d768a62f7",
+      "positive_allocations": 43,
+      "positive_bytes": 151104
+    },
+    {
+      "case": "mixed_int64_float32",
+      "filled_pixels_per_image": [
+        783.0,
+        754.0,
+        783.0,
+        754.0,
+        783.0,
+        754.0,
+        783.0,
+        754.0
+      ],
+      "iqr_us": 1125.2083699946525,
+      "median_us": 558.427030009625,
+      "output_sha256": "4466d4b65cc5fa9296fd3452725a242c56e5321fe3409ea8107af154af394495",
+      "positive_allocations": 43,
+      "positive_bytes": 111608
+    },
+    {
+      "case": "tensor_control",
+      "filled_pixels_per_image": [
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0,
+        783.0
+      ],
+      "iqr_us": 17.33752998006824,
+      "median_us": 180.21714000497013,
+      "output_sha256": "372981f83d7c2f721615918057fa001a0d9d486a20b6d566441a879d768a62f7",
+      "positive_allocations": 36,
+      "positive_bytes": 101528
+    }
+  ]
+}
