@@ -1,0 +1,444 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "device": "cpu",
+    "git_commit": "7ecfbb3",
+    "kornia": "0.9.3.dev",
+    "kornia_file": "/workspace/scratch/c05378b96efa/kornia-base/kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "machine": "x86_64",
+    "numpy": "2.3.5",
+    "opencv": null,
+    "opencv_num_threads": null,
+    "pillow": "13.0.0",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "poselib": null,
+    "python": "3.12.14",
+    "rayon_num_threads_requested": null,
+    "skimage": null,
+    "source_sha256": "f1aeb4ef506e51e2bcf6826382b509f4424cf969071fdb73fcc249b200e281d9",
+    "sys_executable": "/workspace/scratch/c05378b96efa/kornia-base/../contrib-env/bin/python",
+    "timestamp_utc": "2026-11-20T08:29:41+00:00",
+    "torch": "2.15.0+cpu",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "count": 1,
+      "dtype": "torch.float16",
+      "first_values": [
+        [
+          "nan"
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "74999fd28ab18ccca2bee199f260d19764603a3c78353d773d16d215eebe8e19"
+      ],
+      "iqr_us": 10.187239986407803,
+      "median_us": 58.064475015271455,
+      "positive_allocations": 24,
+      "positive_bytes": 257
+    },
+    {
+      "count": 1,
+      "dtype": "torch.float16",
+      "first_values": [
+        [
+          "nan"
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "74999fd28ab18ccca2bee199f260d19764603a3c78353d773d16d215eebe8e19",
+        "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+      ],
+      "iqr_us": 474.5758199896955,
+      "median_us": 403.0528899966157,
+      "positive_allocations": 41,
+      "positive_bytes": 405
+    },
+    {
+      "count": 1,
+      "dtype": "torch.bfloat16",
+      "first_values": [
+        [
+          0.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+      ],
+      "iqr_us": 6.918135022715431,
+      "median_us": 57.00120997062186,
+      "positive_allocations": 24,
+      "positive_bytes": 257
+    },
+    {
+      "count": 1,
+      "dtype": "torch.bfloat16",
+      "first_values": [
+        [
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+        "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+      ],
+      "iqr_us": 26.471314986338278,
+      "median_us": 247.70996000370363,
+      "positive_allocations": 41,
+      "positive_bytes": 405
+    },
+    {
+      "count": 1,
+      "dtype": "torch.float32",
+      "first_values": [
+        [
+          100.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "00754a39f7de30495780d4c6242f680316f56bf4bf735c3681b3ac1d14f1512e"
+      ],
+      "iqr_us": 7.5915599882137,
+      "median_us": 57.14844002795871,
+      "positive_allocations": 21,
+      "positive_bytes": 285
+    },
+    {
+      "count": 1,
+      "dtype": "torch.float32",
+      "first_values": [
+        [
+          100.0
+        ],
+        [
+          -5.0,
+          -5.0,
+          5.0,
+          -5.0,
+          5.0,
+          5.0,
+          -5.0,
+          5.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "00754a39f7de30495780d4c6242f680316f56bf4bf735c3681b3ac1d14f1512e",
+        "796beb24f743e43ebff4e51575cc96847d5169d9109a8450759152a352916bf8"
+      ],
+      "iqr_us": 17.61087001796112,
+      "median_us": 212.79870001308154,
+      "positive_allocations": 37,
+      "positive_bytes": 517
+    },
+    {
+      "count": 1,
+      "dtype": "torch.float64",
+      "first_values": [
+        [
+          100.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "00754a39f7de30495780d4c6242f680316f56bf4bf735c3681b3ac1d14f1512e"
+      ],
+      "iqr_us": 4.66012999822851,
+      "median_us": 48.34244999074144,
+      "positive_allocations": 20,
+      "positive_bytes": 481
+    },
+    {
+      "count": 1,
+      "dtype": "torch.float64",
+      "first_values": [
+        [
+          100.0
+        ],
+        [
+          -5.0,
+          -5.0,
+          5.0,
+          -5.0,
+          5.0,
+          5.0,
+          -5.0,
+          5.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "00754a39f7de30495780d4c6242f680316f56bf4bf735c3681b3ac1d14f1512e",
+        "796beb24f743e43ebff4e51575cc96847d5169d9109a8450759152a352916bf8"
+      ],
+      "iqr_us": 14.597920016967675,
+      "median_us": 234.65628000849392,
+      "positive_allocations": 35,
+      "positive_bytes": 937
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float16",
+      "first_values": [
+        [
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan"
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "1637315420acac40c3544a6ceee357d4702d4828d5edb35de5d843638bc9a6d2"
+      ],
+      "iqr_us": 8.871994996297895,
+      "median_us": 203.66802000353346,
+      "positive_allocations": 24,
+      "positive_bytes": 207926
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float16",
+      "first_values": [
+        [
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan",
+          "nan"
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "1637315420acac40c3544a6ceee357d4702d4828d5edb35de5d843638bc9a6d2",
+        "de2f256064a0af797747c2b97505dc0b9f3df0de4f489eac731c23ae9ca9cc31"
+      ],
+      "iqr_us": 59.88915008856574,
+      "median_us": 454.1242498817155,
+      "positive_allocations": 41,
+      "positive_bytes": 353340
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.bfloat16",
+      "first_values": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47"
+      ],
+      "iqr_us": 130.60157498330227,
+      "median_us": 221.53597998112673,
+      "positive_allocations": 24,
+      "positive_bytes": 207926
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.bfloat16",
+      "first_values": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "9f1dcbc35c350d6027f98be0f5c8b43b42ca52b7604459c0c42be3aa88913d47",
+        "de2f256064a0af797747c2b97505dc0b9f3df0de4f489eac731c23ae9ca9cc31"
+      ],
+      "iqr_us": 150.5369251390222,
+      "median_us": 689.9605998114566,
+      "positive_allocations": 41,
+      "positive_bytes": 353340
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float32",
+      "first_values": [
+        [
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "6fbf3a5ab117d9c7b91de208edd8226e33a9ea649b6c02d3ee4c1e6892df3134"
+      ],
+      "iqr_us": 5.905632497160717,
+      "median_us": 142.64634499340903,
+      "positive_allocations": 21,
+      "positive_bytes": 234552
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float32",
+      "first_values": [
+        [
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0
+        ],
+        [
+          -5.0,
+          -5.0,
+          5.0,
+          -5.0,
+          5.0,
+          5.0,
+          -5.0,
+          5.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "6fbf3a5ab117d9c7b91de208edd8226e33a9ea649b6c02d3ee4c1e6892df3134",
+        "ccdcb73579fbd7411467b46ffcd4ebbd3d6117faafb1b58ca406487ee7bce874"
+      ],
+      "iqr_us": 67.17947471770461,
+      "median_us": 395.0025500671472,
+      "positive_allocations": 37,
+      "positive_bytes": 459844
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float64",
+      "first_values": [
+        [
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0
+        ]
+      ],
+      "gradients": false,
+      "hashes": [
+        "6fbf3a5ab117d9c7b91de208edd8226e33a9ea649b6c02d3ee4c1e6892df3134"
+      ],
+      "iqr_us": 17.12497250991874,
+      "median_us": 210.15292999436497,
+      "positive_allocations": 20,
+      "positive_bytes": 435256
+    },
+    {
+      "count": 1024,
+      "dtype": "torch.float64",
+      "first_values": [
+        [
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0,
+          100.0
+        ],
+        [
+          -5.0,
+          -5.0,
+          5.0,
+          -5.0,
+          5.0,
+          5.0,
+          -5.0,
+          5.0
+        ]
+      ],
+      "gradients": true,
+      "hashes": [
+        "6fbf3a5ab117d9c7b91de208edd8226e33a9ea649b6c02d3ee4c1e6892df3134",
+        "ccdcb73579fbd7411467b46ffcd4ebbd3d6117faafb1b58ca406487ee7bce874"
+      ],
+      "iqr_us": 17.599050079297783,
+      "median_us": 648.4747002104996,
+      "positive_allocations": 35,
+      "positive_bytes": 885832
+    }
+  ]
+}
