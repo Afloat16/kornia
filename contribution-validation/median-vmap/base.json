@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "device": "cpu",
+    "git_commit": "7ecfbb3",
+    "kornia": "0.9.3.dev",
+    "kornia_file": "/workspace/scratch/c05378b96efa/kornia-base/kornia/__init__.py",
+    "kornia_rs": "0.2.0",
+    "machine": "x86_64",
+    "numpy": "2.3.5",
+    "opencv": null,
+    "opencv_num_threads": null,
+    "pillow": "13.0.0",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "poselib": null,
+    "python": "3.12.14",
+    "rayon_num_threads_requested": null,
+    "skimage": null,
+    "source_sha256": "ea3674377a02c8fea4029cb7efb44285ab51ac2733eca8ac535eb81669ef9e1a",
+    "sys_executable": "/workspace/scratch/c05378b96efa/kornia-base/../contrib-env/bin/python",
+    "timestamp_utc": "2026-11-20T07:42:39+00:00",
+    "torch": "2.15.0+cpu",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "gradients": false,
+      "hashes": [
+        "e29c46c39cf0a012f06f6fa4a4016bf58bb8a85f4445642a0b72034e75bb6462"
+      ],
+      "iqr_us": 67.6110998028889,
+      "mapped": false,
+      "median_us": 475.0718999275705,
+      "positive_allocations": 59,
+      "positive_bytes": 6334560
+    },
+    {
+      "gradients": true,
+      "hashes": [
+        "e29c46c39cf0a012f06f6fa4a4016bf58bb8a85f4445642a0b72034e75bb6462",
+        "2bf676c423e372e41f2d4cb5c539ab401aabd3f1fa44c3bf38bf8001d32c5e4c"
+      ],
+      "iqr_us": 1178.077502117958,
+      "mapped": false,
+      "median_us": 8500.495998305269,
+      "positive_allocations": 47,
+      "positive_bytes": 12280464
+    },
+    {
+      "gradients": false,
+      "hashes": [
+        "e29c46c39cf0a012f06f6fa4a4016bf58bb8a85f4445642a0b72034e75bb6462"
+      ],
+      "iqr_us": 46.33790022126052,
+      "mapped": true,
+      "median_us": 655.8686001881142,
+      "positive_allocations": 59,
+      "positive_bytes": 6334560
+    },
+    {
+      "gradients": true,
+      "hashes": [
+        "e29c46c39cf0a012f06f6fa4a4016bf58bb8a85f4445642a0b72034e75bb6462",
+        "2bf676c423e372e41f2d4cb5c539ab401aabd3f1fa44c3bf38bf8001d32c5e4c"
+      ],
+      "iqr_us": 776.4220008539269,
+      "mapped": true,
+      "median_us": 16105.239999888,
+      "positive_allocations": 562,
+      "positive_bytes": 35226956
+    }
+  ]
+}
