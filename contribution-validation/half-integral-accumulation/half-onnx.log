@@ -1,0 +1,17 @@
+python /workspace/scratch/c05378b96efa/kornia-integral-half-round2/../contrib-env/bin/python kornia /workspace/scratch/c05378b96efa/kornia-integral-half-round2/kornia/__init__.py
+<stdin>:26: DeprecationWarning: You are using the legacy TorchScript-based ONNX export. Starting in PyTorch 2.9, the new torch.export-based ONNX exporter has become the default. Learn more about the new export logic: https://docs.pytorch.org/docs/stable/onnx_export.html. For exporting control flow: https://pytorch.org/tutorials/beginner/onnx/export_control_flow_model_to_onnx_tutorial.html
+dynamo False dtype torch.float16 last_prefix [2048.0, 2.0] PASS
+<stdin>:26: UserWarning: Exporting a model while it is in training mode. Please ensure that this is intended, as it may lead to different behavior during inference. Calling model.eval() before export is recommended.
+W1120 03:02:31.530000 6 torch/onnx/_internal/exporter/_registration.py:107] torchvision is not installed. Skipping torchvision::nms
+W1120 03:02:31.531000 6 torch/onnx/_internal/exporter/_registration.py:107] torchvision is not installed. Skipping torchvision::roi_align
+W1120 03:02:31.532000 6 torch/onnx/_internal/exporter/_registration.py:107] torchvision is not installed. Skipping torchvision::roi_pool
+W1120 03:02:31.532000 6 torch/onnx/_internal/exporter/_registration.py:107] torchvision is not installed. Skipping torchvision::deform_conv2d
+[torch.onnx] Obtain model graph for `IntegralImage()` with `torch.export.export(..., strict=False)`...
+[torch.onnx] Obtain model graph for `IntegralImage()` with `torch.export.export(..., strict=False)`... ✅
+[torch.onnx] Run decompositions...
+[torch.onnx] Run decompositions... ✅
+[torch.onnx] Translate the graph into ONNX...
+[torch.onnx] Translate the graph into ONNX... ✅
+[torch.onnx] Optimize the ONNX graph...
+[torch.onnx] Optimize the ONNX graph... ✅
+dynamo True dtype torch.float16 last_prefix [2048.0, 2.0] PASS

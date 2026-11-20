@@ -1,0 +1,57 @@
+{
+  "repository": "kornia/kornia",
+  "base": "154cacefcc644c67145834840192cd1816955e20",
+  "local_commit": "de6312f53d2220532dd07617de31b72e1ff435ba",
+  "remote_commit": "12fd5c57333ae039a989ffcf950cb32096d6ed80",
+  "tree": "f89a26abde806c4c2e55ced1055f0a6ff38e907f",
+  "head": "Afloat16:fix/half-integral-accumulation-20261120",
+  "baseline": {
+    "failed": 5,
+    "passed": 2,
+    "deselected": 49,
+    "scope": "new analytic half regressions only"
+  },
+  "validation": {
+    "half_functional": 55,
+    "standard_functional": 48,
+    "half_inductor_forward_backward": 2,
+    "doctests": 4,
+    "selected_onnx_conformance": 199,
+    "selected_compile_conformance": 105,
+    "new_float16_onnx_exporter_checks": 2,
+    "precommit_hooks": 12,
+    "typecheck": "passed",
+    "towncrier_draft": "passed",
+    "diff_check": "passed",
+    "conformance_packages": [
+      "augmentation",
+      "enhance"
+    ]
+  },
+  "environment": {
+    "device": "CPU",
+    "torch": "2.15.0+cpu",
+    "python": "3.12.14",
+    "onnx": "1.23.2",
+    "onnxruntime": "1.32.0",
+    "threads": 1,
+    "pixi": "not available; equivalent direct commands used with explicit interpreter"
+  },
+  "limits": [
+    "No CUDA or MPS execution",
+    "User incidence is unknown; fixtures are synthetic proofs within [-1, 1]",
+    "Final values outside the output dtype range still overflow",
+    "Float32 accumulation is not exact arbitrary-precision arithmetic",
+    "Higher temporary memory and measured slower half multi-axis paths; no speedup claim"
+  ],
+  "notes": [
+    "Initial applies_to marker setup error was corrected before collecting the real baseline; not counted as a defect failure",
+    "An intermediate cumsum(dtype=float32) experiment fixed forward values but left two gradient regressions; final implementation explicitly casts the input before all cumulative sums",
+    "Benchmark JSON non-finite scalar summaries use null; nan_count and nonfinite_where_reference_finite retain the result classification"
+  ],
+  "files": {
+    "kornia/enhance/integral.py": "150da7e4e593f43e6a7fbd8a8c3ce81f09b440d2452fff1c9422b891470adcb1",
+    "tests/enhance/test_integral.py": "0b0c8d61b6112a0f0cacf4fddeee60719013d0036fc386f1656081c9dff77fc3",
+    "changelog.d/+half-integral-accumulation.fixed.md": "6441450f8502412cb1c2be6591783c0d23aab11dc35c9b89351c91eb0cacc88c"
+  }
+}

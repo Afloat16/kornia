@@ -1,0 +1,514 @@
+{
+  "metadata": {
+    "timestamp_utc": "2026-11-20T10:57:11+00:00",
+    "git_commit": "154cace",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "python": "3.12.14",
+    "torch": "2.15.0+cpu",
+    "kornia": "0.9.3.dev",
+    "device": "cpu",
+    "torch_num_threads": 1,
+    "opencv_num_threads": null,
+    "rayon_num_threads_requested": null,
+    "opencv": null,
+    "poselib": null,
+    "torchvision": null,
+    "numpy": "2.3.5",
+    "albumentations": null,
+    "kornia_rs": "0.2.0",
+    "pillow": "13.0.0",
+    "skimage": null
+  },
+  "python": "/workspace/scratch/c05378b96efa/kornia-integral-base-round2/../contrib-env/bin/python",
+  "kornia_path": "/workspace/scratch/c05378b96efa/kornia-integral-base-round2/kornia/__init__.py",
+  "source_sha256": "b76fe29f3a24f29981e4b8a146ed53da4bc5d638a56f50ffab2189a27f114fd3",
+  "allocation_metric": "sum of positive self_cpu_memory_usage from torch.profiler; cumulative bytes, not peak",
+  "reference": "same public API on float64 inputs, cast to input dtype; test assertions use independent analytical literals",
+  "rows": [
+    {
+      "case": "cancellation",
+      "shape": [
+        2049,
+        2
+      ],
+      "dtype": "torch.float16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 14.04497999465093,
+      "iqr_us": 0.5028035047871533,
+      "allocation_bytes": 16392,
+      "allocation_events": 2,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 1.0,
+      "last_value": 1.0,
+      "first_value": 1.0,
+      "sha256": "18878fd64c5159a0cc7a6bd9935e5a54676de2bbf569bd998ac86b7d22db67f3"
+    },
+    {
+      "case": "reverse_axes_control",
+      "shape": [
+        2049,
+        2
+      ],
+      "dtype": "torch.float16",
+      "dim": [
+        1,
+        0
+      ],
+      "mode": "forward",
+      "median_us": 12.815605499781666,
+      "iqr_us": 0.2623532473080563,
+      "allocation_bytes": 16392,
+      "allocation_events": 2,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": 2.0,
+      "first_value": 1.0,
+      "sha256": "4f2461b475c51dc60818f0b748d59a7e79a54975175a949cc1a06687d7793d59"
+    },
+    {
+      "case": "gradient_cancellation",
+      "shape": [
+        2,
+        2049
+      ],
+      "dtype": "torch.float16",
+      "dim": null,
+      "mode": "backward",
+      "median_us": 74.56409999576863,
+      "iqr_us": 6.6458299988880745,
+      "allocation_bytes": 65568,
+      "allocation_events": 8,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 1.0,
+      "last_value": -0.9990234375,
+      "first_value": 1.0,
+      "sha256": "536b7009e66081ec72bf100277bd20221bbd53b49470b5a54b27f1392503dff8"
+    },
+    {
+      "case": "small_image",
+      "shape": [
+        3,
+        3
+      ],
+      "dtype": "torch.float16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 6.022952497005463,
+      "iqr_us": 5.501331252162345,
+      "allocation_bytes": 36,
+      "allocation_events": 2,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": 4.5,
+      "first_value": 0.0,
+      "sha256": "8ed172f3c65efe2a6449441218755051c684ca2290391def2a58c0dc3253c729"
+    },
+    {
+      "case": "cancellation",
+      "shape": [
+        257,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 6.70086000172887,
+      "iqr_us": 0.5065640034445097,
+      "allocation_bytes": 2056,
+      "allocation_events": 2,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 1.0,
+      "last_value": 1.0,
+      "first_value": 1.0,
+      "sha256": "805a12c5c64cb9e0e83f3c2d000dcd63b23822c8c1d551ad7046b9b115d01b76"
+    },
+    {
+      "case": "reverse_axes_control",
+      "shape": [
+        257,
+        2
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": [
+        1,
+        0
+      ],
+      "mode": "forward",
+      "median_us": 5.759655497968197,
+      "iqr_us": 0.26933324625133565,
+      "allocation_bytes": 2056,
+      "allocation_events": 2,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": 2.0,
+      "first_value": 1.0,
+      "sha256": "ebda3758a54b80205479bed22f7cbfd3ea9a9a138c7107e471b284a5f6d3f4b8"
+    },
+    {
+      "case": "gradient_cancellation",
+      "shape": [
+        2,
+        257
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": null,
+      "mode": "backward",
+      "median_us": 34.67025999270845,
+      "iqr_us": 3.163292476529029,
+      "allocation_bytes": 8224,
+      "allocation_events": 8,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 1.0,
+      "last_value": -0.9921875,
+      "first_value": 1.0,
+      "sha256": "b62a922023a0cd24bb96b59bf92d1f0b92a0e2573960aa346163b51f1f594c18"
+    },
+    {
+      "case": "small_image",
+      "shape": [
+        3,
+        3
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 5.489518000103998,
+      "iqr_us": 0.3532607479428405,
+      "allocation_bytes": 36,
+      "allocation_events": 2,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": 4.5,
+      "first_value": 0.0,
+      "sha256": "f727225b5a3492750a1c9ade7fc8b7bc0ea294e35042a7810375f9ba1cdca877"
+    },
+    {
+      "case": "volume_cancellation",
+      "shape": [
+        256,
+        256,
+        2
+      ],
+      "dtype": "torch.float16",
+      "dim": [
+        0,
+        1,
+        2
+      ],
+      "mode": "forward",
+      "median_us": 472.0136999821989,
+      "iqr_us": 28.612649839487847,
+      "allocation_bytes": 786432,
+      "allocation_events": 3,
+      "output_dtype": "torch.float16",
+      "nan_count": 1,
+      "nonfinite_where_reference_finite": 1,
+      "finite_max_abs_error": 0.0,
+      "last_value": null,
+      "first_value": 1.0,
+      "sha256": "14df422652adfe1307edbb5432ed6c0fb83e619b28bc6d6b0417695c1d925b6c"
+    },
+    {
+      "case": "image_128",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 113.05166997772176,
+      "iqr_us": 11.077909948653552,
+      "allocation_bytes": 196608,
+      "allocation_events": 2,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0625,
+      "last_value": 6.9609375,
+      "first_value": 0.318115234375,
+      "sha256": "db39f8fc018531738055a924ad2659d89243ac442d4cdd196a2cd1e0b201a2f5"
+    },
+    {
+      "case": "single_axis_control",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float16",
+      "dim": [
+        -1
+      ],
+      "mode": "forward",
+      "median_us": 52.408770061447285,
+      "iqr_us": 3.4989900450455043,
+      "allocation_bytes": 98304,
+      "allocation_events": 1,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": -0.88671875,
+      "first_value": 0.318115234375,
+      "sha256": "389b2076c928bd0a89a7fe034c1ed0334fc44ac404b30a6d049cbaf48217879d"
+    },
+    {
+      "case": "empty_batch",
+      "shape": [
+        0,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 4.966243002854753,
+      "iqr_us": 0.22054749933886345,
+      "allocation_bytes": 0,
+      "allocation_events": 0,
+      "output_dtype": "torch.float16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": null,
+      "first_value": null,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "image_128",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 136.6047099872958,
+      "iqr_us": 4.699085038737381,
+      "allocation_bytes": 196608,
+      "allocation_events": 2,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.5,
+      "last_value": 6.96875,
+      "first_value": 0.318359375,
+      "sha256": "3a9e7f5abc294b7062563bea2952f827ed7584e952ce27a993f368f30f77abb9"
+    },
+    {
+      "case": "single_axis_control",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": [
+        -1
+      ],
+      "mode": "forward",
+      "median_us": 58.40832494868664,
+      "iqr_us": 3.8810274963907494,
+      "allocation_bytes": 98304,
+      "allocation_events": 1,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": -0.890625,
+      "first_value": 0.318359375,
+      "sha256": "30021eed2b28bdca467c29d1195934a0942694b30f637cdeac2c8748d90ef361"
+    },
+    {
+      "case": "empty_batch",
+      "shape": [
+        0,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.bfloat16",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 4.732735000288813,
+      "iqr_us": 0.3343492498970593,
+      "allocation_bytes": 0,
+      "allocation_events": 0,
+      "output_dtype": "torch.bfloat16",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": null,
+      "first_value": null,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "image_128",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 127.81416498910403,
+      "iqr_us": 7.3661824899318,
+      "allocation_bytes": 393216,
+      "allocation_events": 2,
+      "output_dtype": "torch.float32",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 7.62939453125e-06,
+      "last_value": 6.938068866729736,
+      "first_value": 0.31820857524871826,
+      "sha256": "59de6f6e95d58e726b8c4306973a6197e801d93585c95af7bfcca3f8459e2b36"
+    },
+    {
+      "case": "single_axis_control",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "dim": [
+        -1
+      ],
+      "mode": "forward",
+      "median_us": 62.83204500505235,
+      "iqr_us": 10.970507446472773,
+      "allocation_bytes": 196608,
+      "allocation_events": 1,
+      "output_dtype": "torch.float32",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": -0.8864190578460693,
+      "first_value": 0.31820857524871826,
+      "sha256": "1f35da4fbb82cb66b9655d1acb9a1802288dc5a112ccac5ed1983fd7841059ed"
+    },
+    {
+      "case": "empty_batch",
+      "shape": [
+        0,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float32",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 6.246625001949724,
+      "iqr_us": 1.382207003189251,
+      "allocation_bytes": 0,
+      "allocation_events": 0,
+      "output_dtype": "torch.float32",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": null,
+      "first_value": null,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "case": "image_128",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float64",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 154.96680003707297,
+      "iqr_us": 14.630007499363286,
+      "allocation_bytes": 786432,
+      "allocation_events": 2,
+      "output_dtype": "torch.float64",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": 6.9380714893341064,
+      "first_value": 0.31820857524871826,
+      "sha256": "8371fdfc524e39b3b41b377830177d2617acca9af2050bf783da7cdd472ef50a"
+    },
+    {
+      "case": "single_axis_control",
+      "shape": [
+        1,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float64",
+      "dim": [
+        -1
+      ],
+      "mode": "forward",
+      "median_us": 46.070210009929724,
+      "iqr_us": 0.7951100269565348,
+      "allocation_bytes": 393216,
+      "allocation_events": 1,
+      "output_dtype": "torch.float64",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": -0.8864190578460693,
+      "first_value": 0.31820857524871826,
+      "sha256": "f32bed2b877b7830f34beb3d6543932e6ec5ed68ff750fdc12411d8538115b78"
+    },
+    {
+      "case": "empty_batch",
+      "shape": [
+        0,
+        3,
+        128,
+        128
+      ],
+      "dtype": "torch.float64",
+      "dim": null,
+      "mode": "forward",
+      "median_us": 7.805237000866327,
+      "iqr_us": 1.6038100002333522,
+      "allocation_bytes": 0,
+      "allocation_events": 0,
+      "output_dtype": "torch.float64",
+      "nan_count": 0,
+      "nonfinite_where_reference_finite": 0,
+      "finite_max_abs_error": 0.0,
+      "last_value": null,
+      "first_value": null,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
