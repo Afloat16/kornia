@@ -1,0 +1,159 @@
+name: Validate depth gradient candidate
+
+on:
+  push:
+    branches: [validation-depth-float16-gradient-20261120]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: depth-gradient-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE_SHA: 8dca8f15b7ba5f97d087570ce55596aca194c735
+  CANDIDATE_TREE: 4d7ead51549b10eb3960404851695732d965b593
+  PRIOR_HEAD: 9ce5ff5493545c52b40f32c94204d652985deaf2
+  PR_BASE: 7ecfbb392285e03f73b4dd4cce62fc3fb8349c33
+  OMP_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  TORCHINDUCTOR_COMPILE_THREADS: '1'
+
+jobs:
+  conformance:
+    name: ${{ matrix.kind }} conformance / candidate 8dca8f1
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: compile
+            test-file: tests/test_inductor_conformance.py
+            expected-tests: 764
+          - kind: onnx
+            test-file: tests/onnx/test_conformance.py
+            expected-tests: 1545
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout the exact source candidate
+        uses: actions/checkout@v7
+        with:
+          ref: 8dca8f15b7ba5f97d087570ce55596aca194c735
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record candidate identity
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/depth-gradient-${{ matrix.kind }}"
+          mkdir -p "$evidence_dir"
+          echo "EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+          test "$(git rev-parse HEAD^1)" = "$PRIOR_HEAD"
+          git diff --check "$PRIOR_HEAD" HEAD
+          git show --no-patch --format=fuller HEAD | tee "$evidence_dir/commit.txt"
+          git diff --stat "$PRIOR_HEAD" HEAD | tee "$evidence_dir/change-stat.txt"
+          git diff --no-renames --name-only "$PR_BASE...HEAD" > "$evidence_dir/pr-files.txt"
+          git diff --exit-code
+
+      - name: Setup repository Pixi environment
+        uses: prefix-dev/setup-pixi@v0.11.3
+        with:
+          pixi-version: v0.40.0
+          environments: py312
+          cache: true
+
+      - name: Install locked development dependencies
+        run: |
+          set -euo pipefail
+          pixi run -e py312 install 2>&1 | tee "$EVIDENCE_DIR/install.log"
+
+      - name: Install pinned CPU Torch and reconcile its sidecars
+        run: |
+          set -euo pipefail
+          pixi run -e py312 uv run --no-sync uv pip install \
+            --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu 'torch==2.15.0' \
+            2>&1 | tee "$EVIDENCE_DIR/torch-install.log"
+          report=$(pixi run -e py312 uv run --no-sync \
+            python .github/scripts/check_torch_env.py --list-undeclared-sidecars | tr -d '\r')
+          printf '%s\n' "$report" | tee "$EVIDENCE_DIR/sidecars.txt"
+          printf '%s\n' "$report" | grep -q '^undeclared-sidecars:'
+          stale=$(printf '%s\n' "$report" | sed -n 's/^undeclared-sidecars:[[:space:]]*//p' | tail -n 1)
+          if [[ -n "$stale" ]]; then
+            pixi run -e py312 uv run --no-sync uv pip uninstall $stale \
+              2>&1 | tee "$EVIDENCE_DIR/sidecar-removal.log"
+          fi
+          pixi run -e py312 uv run --no-sync \
+            python .github/scripts/check_torch_env.py --channel pinned --expected 2.15.0 \
+            2>&1 | tee "$EVIDENCE_DIR/torch-environment.txt"
+          pixi run -e py312 uv run --no-sync uv pip freeze > "$EVIDENCE_DIR/dependencies.txt"
+
+      - name: Select and run the complete promised-package gate
+        env:
+          UV_NO_SYNC: '1'
+          KORNIA_TEST_DEVICE: cpu
+          KORNIA_TEST_DTYPE: float32
+          GATE_KIND: ${{ matrix.kind }}
+          GATE_TEST_FILE: ${{ matrix.test-file }}
+        run: |
+          set -euo pipefail
+          packages=$(pixi run -e py312 uv run --no-sync \
+            python .github/scripts/conformance_packages.py "$GATE_KIND" < "$EVIDENCE_DIR/pr-files.txt")
+          export SELECTED_PACKAGES="$packages"
+          pixi run -e py312 uv run --no-sync python - <<'PY'
+          import os
+          expected = {'geometry', 'augmentation', 'filters', 'enhance', 'losses', 'metrics', 'io', 'image', 'core', 'feature'}
+          selected = set(os.environ['SELECTED_PACKAGES'].split(','))
+          assert selected == expected, (selected, expected)
+          print('Selected promised packages:', os.environ['SELECTED_PACKAGES'])
+          PY
+          gate=(pixi run -e py312 test-module "$GATE_TEST_FILE" \
+            "--${GATE_KIND}-conformance=$packages" --device=cpu --dtype=float32 --timeout=600)
+          printf '%q ' "${gate[@]}" > "$EVIDENCE_DIR/command.txt"
+          printf '\n' >> "$EVIDENCE_DIR/command.txt"
+          "${gate[@]}" --collect-only -q --color=no 2>&1 | tee "$EVIDENCE_DIR/collection.log"
+          "${gate[@]}" --junitxml="$EVIDENCE_DIR/results.xml" -q --color=no \
+            2>&1 | tee "$EVIDENCE_DIR/pytest.log"
+
+      - name: Verify complete coverage and unchanged source
+        env:
+          EXPECTED_TESTS: ${{ matrix.expected-tests }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          directory = Path(os.environ['EVIDENCE_DIR'])
+          root = ET.parse(directory / 'results.xml').getroot()
+          cases = list(root.iter('testcase'))
+          failures = [case.attrib for case in cases if case.find('failure') is not None or case.find('error') is not None]
+          skipped = [case.find('skipped') for case in cases if case.find('skipped') is not None]
+          unexpected_skips = [skip.attrib for skip in skipped if skip.get('type') != 'pytest.xfail']
+          assert len(cases) == int(os.environ['EXPECTED_TESTS']), len(cases)
+          assert not failures, failures
+          assert not unexpected_skips, unexpected_skips
+          receipt = {'candidate': os.environ['CANDIDATE_SHA'], 'tree': os.environ['CANDIDATE_TREE'],
+                     'tests': len(cases), 'passed': len(cases) - len(skipped), 'strict_xfails': len(skipped)}
+          (directory / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt, indent=2))
+          PY
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - name: Upload complete validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: depth-gradient-${{ matrix.kind }}-8dca8f1
+          path: ${{ runner.temp }}/depth-gradient-${{ matrix.kind }}/
+          if-no-files-found: error
+          retention-days: 14
