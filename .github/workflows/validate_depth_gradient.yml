@@ -1,4 +1,5 @@
 name: Validate depth gradient candidate
+run-name: Depth gradient candidate 8dca8f1 (${{ github.event_name }})
 
 on:
   push:
