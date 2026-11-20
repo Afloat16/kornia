@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "source": "/workspace/scratch/c05378b96efa/kornia-base",
+    "sha": "7ecfbb392285e03f73b4dd4cce62fc3fb8349c33",
+    "sobel_sha256": "944493c92fc4f11256ea2b811ccc3e53149d72362df0f4cb9b872df2cbce7248",
+    "interpreter": "/workspace/scratch/c05378b96efa/kornia-base/../contrib-env/bin/python",
+    "torch": "2.15.0+cpu",
+    "threads": 1
+  },
+  "results": [
+    {
+      "shape": [
+        1,
+        1,
+        64,
+        64,
+        64
+      ],
+      "positive_bytes": 10587180,
+      "peak_net_bytes": 7441452,
+      "positive_count": 8,
+      "output_bytes": 3145728
+    },
+    {
+      "shape": [
+        1,
+        1,
+        128,
+        128,
+        128
+      ],
+      "positive_bytes": 84285484,
+      "peak_net_bytes": 59119660,
+      "positive_count": 8,
+      "output_bytes": 25165824
+    },
+    {
+      "shape": [
+        2,
+        3,
+        64,
+        64,
+        64
+      ],
+      "positive_bytes": 63523020,
+      "peak_net_bytes": 44648652,
+      "positive_count": 8,
+      "output_bytes": 18874368
+    }
+  ]
+}

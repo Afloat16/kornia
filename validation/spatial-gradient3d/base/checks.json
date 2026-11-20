@@ -1,0 +1,565 @@
+{
+  "metadata": {
+    "source": "/workspace/scratch/c05378b96efa/kornia-base",
+    "sha": "7ecfbb392285e03f73b4dd4cce62fc3fb8349c33",
+    "sobel_sha256": "944493c92fc4f11256ea2b811ccc3e53149d72362df0f4cb9b872df2cbce7248",
+    "interpreter": "/workspace/scratch/c05378b96efa/kornia-base/../contrib-env/bin/python",
+    "torch": "2.15.0+cpu",
+    "threads": 1
+  },
+  "results": [
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.bfloat16",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float32",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        1,
+        3,
+        4
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        0,
+        2,
+        3,
+        4,
+        5
+      ],
+      "layout": "expanded"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "contiguous"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "transposed"
+    },
+    {
+      "dtype": "torch.float64",
+      "shape": [
+        1,
+        1,
+        2,
+        1,
+        3
+      ],
+      "layout": "expanded"
+    },
+    {
+      "transform": "script",
+      "error": [
+        "Set aren't supported:",
+        "  File \"/workspace/scratch/c05378b96efa/kornia-base/kornia/filters/kernels.py\", line 899",
+        "",
+        "    \"\"\"",
+        "    KORNIA_CHECK(mode.lower() in {\"sobel\", \"diff\"}, f\"Mode should be `sobel` or `diff`. Got {mode}\")",
+        "                                 ~ <--- HERE",
+        "    KORNIA_CHECK(order in {1, 2}, lambda: f\"Order should be 1 or 2. Got {order}\")",
+        "    # the check is case-insensitive, so dispatch on the lower-case spelling as well"
+      ]
+    },
+    {
+      "transform": "functionalize"
+    },
+    {
+      "transform": "vmap",
+      "error": [
+        "vmap: inplace arithmetic(self, *extra_args) is not possible because there exists a Tensor `other` in extra_args that has more elements than `self`. This happened due to `other` being vmapped over but `self` not being vmapped over in a vmap. Please try to use out-of-place operators instead of inplace arithmetic. If said operator is being called inside the PyTorch framework, please file a bug report instead."
+      ]
+    },
+    {
+      "transform": "jvp"
+    }
+  ]
+}

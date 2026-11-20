@@ -1,0 +1,46 @@
+Torch 2.15.0+cpu threads 1 ORT_DISABLE_TELEMETRY=1
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.2.0, pluggy-1.7.0 -- /workspace/scratch/c05378b96efa/kornia-work/../contrib-env/bin/python
+cachedir: .pytest_cache
+
+cpu info:
+
+gpu info: {}
+main deps:
+    - kornia-0.9.3.dev
+    - torch-2.15.0+cpu
+        - commit: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+        - cuda: None
+        - nvidia-driver: None
+x deps:
+    - `accelerate` not found
+dev deps:
+    - kornia_rs-0.2.0
+    - onnx-1.23.2
+gcc info: (Debian 14.2.0-19) 14.2.0
+available optimizers: {'', None, 'tvm', 'cudagraphs', 'openxla', 'jit', 'inductor'}
+model weights cached: ['checkpoints']
+
+rootdir: /workspace/scratch/c05378b96efa/kornia-work
+configfile: pyproject.toml
+plugins: platformdirs-4.14.7, timeout-2.4.0, anyio-4.14.2
+timeout: 90.0s
+timeout method: signal
+timeout func_only: False
+collecting ... collected 1545 items / 1541 deselected / 4 selected
+
+tests/onnx/test_conformance.py::test_export_matches_eager[filters.spatial_gradient3d] PASSED [ 25%]
+tests/onnx/test_conformance.py::test_export_matches_eager[filters.spatial_gradient3d[order2]] PASSED [ 50%]
+tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[filters.spatial_gradient3d] PASSED [ 75%]
+tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[filters.spatial_gradient3d[order2]] PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../../opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages/anyio/pytest_plugin.py:14
+  /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages/anyio/pytest_plugin.py:14: PytestRemovedIn10Warning: _pytest.python.CallSpec2 has been renamed to CallSpec.
+  The CallSpec2 alias will be removed in pytest 10.
+  Update imports to use CallSpec instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#callspec2-renamed
+    from _pytest.python import CallSpec2
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 4 passed, 1541 deselected, 1 warning in 8.04s =================
