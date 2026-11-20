@@ -1,0 +1,194 @@
+python /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/../contrib-env/bin/python kornia /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/kornia/__init__.py
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+[W1120 02:07:29.680128643 CPUAllocator.cpp:245] Memory block of unknown size was allocated before the profiling started, profiler results will not include the deallocation event
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:29 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:30 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+USDT:2026-11-20 02:07:31 5:5 SyncActivityProfilerHandler.cpp:39] profiler_start
+USDT:2026-11-20 02:07:31 5:5 SyncActivityProfilerHandler.cpp:46] profiler_stop
+[
+  {
+    "case": "pose",
+    "shape": [
+      17,
+      2
+    ],
+    "inplace": false,
+    "median_us": 4.6440410005743615,
+    "iqr_us": 0.9225829962815623,
+    "allocation_bytes": 136,
+    "allocation_events": 1,
+    "sha256": "c557306dd753c04669bda6f19c1e0e15b5a33cae64ed624ff5eed720b71f3aaf"
+  },
+  {
+    "case": "pose",
+    "shape": [
+      17,
+      2
+    ],
+    "inplace": true,
+    "median_us": 2.1315563000825932,
+    "iqr_us": 0.1488459496613361,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "c557306dd753c04669bda6f19c1e0e15b5a33cae64ed624ff5eed720b71f3aaf"
+  },
+  {
+    "case": "pose_batch",
+    "shape": [
+      32,
+      17,
+      2
+    ],
+    "inplace": false,
+    "median_us": 4.649629998311866,
+    "iqr_us": 0.6080580042180371,
+    "allocation_bytes": 4352,
+    "allocation_events": 1,
+    "sha256": "55758cf7caac4318ea0cd7341694f3e2abee92881be0b243aef99bdc065cd421"
+  },
+  {
+    "case": "pose_batch",
+    "shape": [
+      32,
+      17,
+      2
+    ],
+    "inplace": true,
+    "median_us": 2.213647200187552,
+    "iqr_us": 0.16280630006804125,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "55758cf7caac4318ea0cd7341694f3e2abee92881be0b243aef99bdc065cd421"
+  },
+  {
+    "case": "features",
+    "shape": [
+      32,
+      2048,
+      2
+    ],
+    "inplace": false,
+    "median_us": 22.596877002797555,
+    "iqr_us": 0.7438230004481762,
+    "allocation_bytes": 524288,
+    "allocation_events": 1,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "features",
+    "shape": [
+      32,
+      2048,
+      2
+    ],
+    "inplace": true,
+    "median_us": 4.826578002393944,
+    "iqr_us": 0.3831740013993117,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "video",
+    "shape": [
+      2,
+      16,
+      2048,
+      2
+    ],
+    "inplace": false,
+    "median_us": 22.803329993621446,
+    "iqr_us": 3.2672299857949834,
+    "allocation_bytes": 524288,
+    "allocation_events": 1,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "video",
+    "shape": [
+      2,
+      16,
+      2048,
+      2
+    ],
+    "inplace": true,
+    "median_us": 4.512187500949949,
+    "iqr_us": 3.0810244998065177,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "strided",
+    "shape": [
+      32,
+      2048,
+      2
+    ],
+    "inplace": false,
+    "median_us": 21.05955699880724,
+    "iqr_us": 1.0556335000728707,
+    "allocation_bytes": 524288,
+    "allocation_events": 1,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "strided",
+    "shape": [
+      32,
+      2048,
+      2
+    ],
+    "inplace": true,
+    "median_us": 4.5175300001574215,
+    "iqr_us": 0.2686259940674064,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "a7e4946e483289211cd8b724c41f45d34f9a8bbcc5bdd8f93abcbf116e4699a6"
+  },
+  {
+    "case": "empty",
+    "shape": [
+      0,
+      2
+    ],
+    "inplace": false,
+    "median_us": 3.6610569986805785,
+    "iqr_us": 0.18512899987399611,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "case": "empty",
+    "shape": [
+      0,
+      2
+    ],
+    "inplace": true,
+    "median_us": 1.9163770997693064,
+    "iqr_us": 0.5223135998676298,
+    "allocation_bytes": 0,
+    "allocation_events": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

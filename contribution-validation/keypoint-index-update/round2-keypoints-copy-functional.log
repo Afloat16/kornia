@@ -1,0 +1,34 @@
+[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 26%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 53%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m [ 80%]
+[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[33m                    [100%][0m
+[33m=============================== warnings summary ===============================[0m
+../../../../opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages/anyio/pytest_plugin.py:14
+  /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages/anyio/pytest_plugin.py:14: PytestRemovedIn10Warning: _pytest.python.CallSpec2 has been renamed to CallSpec.
+  The CallSpec2 alias will be removed in pytest 10.
+  Update imports to use CallSpec instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#callspec2-renamed
+    from _pytest.python import CallSpec2
+
+tests/geometry/test_keypoints.py::TestKeypoints3D::test_not_implemented[cpu-float32]
+tests/geometry/test_keypoints.py::TestKeypoints3D::test_not_implemented[cpu-float64]
+  /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/tests/geometry/test_keypoints.py:629: DeprecationWarning: Since kornia 0.9.1 the `Keypoints3D.pad` is deprecated and will be removed in the future versions. It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).
+    kp.pad(torch.zeros(1, 6, device=device, dtype=dtype))
+
+tests/geometry/test_keypoints.py::TestKeypoints3D::test_not_implemented[cpu-float32]
+tests/geometry/test_keypoints.py::TestKeypoints3D::test_not_implemented[cpu-float64]
+  /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/tests/geometry/test_keypoints.py:631: DeprecationWarning: Since kornia 0.9.1 the `Keypoints3D.unpad` is deprecated and will be removed in the future versions. It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).
+    kp.unpad(torch.zeros(1, 6, device=device, dtype=dtype))
+
+tests/geometry/test_keypoints.py::TestConventionsKeypoints::test_wart_keypoints_documented_paths_not_implemented_5023[cpu-float32-keypoints3d_pad]
+tests/geometry/test_keypoints.py::TestConventionsKeypoints::test_wart_keypoints_documented_paths_not_implemented_5023[cpu-float64-keypoints3d_pad]
+  /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/tests/geometry/test_keypoints.py:852: DeprecationWarning: Since kornia 0.9.1 the `Keypoints3D.pad` is deprecated and will be removed in the future versions. It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).
+    "keypoints3d_pad": lambda: Keypoints3D(kp3d).pad(torch.zeros(1, 6, device=device, dtype=dtype)),
+
+tests/geometry/test_keypoints.py::TestConventionsKeypoints::test_wart_keypoints_documented_paths_not_implemented_5023[cpu-float32-keypoints3d_unpad]
+tests/geometry/test_keypoints.py::TestConventionsKeypoints::test_wart_keypoints_documented_paths_not_implemented_5023[cpu-float64-keypoints3d_unpad]
+  /workspace/scratch/c05378b96efa/kornia-keypoints-copy-round2/tests/geometry/test_keypoints.py:853: DeprecationWarning: Since kornia 0.9.1 the `Keypoints3D.unpad` is deprecated and will be removed in the future versions. It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).
+    "keypoints3d_unpad": lambda: Keypoints3D(kp3d).unpad(torch.zeros(1, 6, device=device, dtype=dtype)),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+[33m[32m269 passed[0m, [33m[1m9 warnings[0m[33m in 0.70s[0m[0m
