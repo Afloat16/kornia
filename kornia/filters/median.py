@@ -129,9 +129,10 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
           values is finite; a 1x1 window returns its pixel, infinity included.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
         - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
-          :func:`~kornia.filters.box_blur`; outside autocast, a floating image keeps its dtype. Under CPU autocast,
-          the convolution path uses the autocast dtype, which can round the selected value. For a float32 image,
-          call the filter inside ``with torch.autocast("cpu", enabled=False):`` to retain float32 precision.
+          :func:`~kornia.filters.box_blur`, with the same result as filtering ``input.float()``. Outside autocast,
+          a floating image keeps its dtype. CPU autocast can cast the convolution path to a reduced precision and
+          round the selected value. For a float32 CPU image, call the filter inside
+          ``with torch.autocast("cpu", enabled=False):`` to retain float32 precision.
 
     Args:
         input: image with shape ``(B, C, H, W)``.
